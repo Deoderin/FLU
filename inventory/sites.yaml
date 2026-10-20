@@ -1,63 +1,66 @@
-# Площадки: куда подключаются роботы.
+# Майданчики: куди підключаються НРК.
 #
-#   kind: managed  — сервер с нашим стеком (WireGuard + MediaMTX + арбитр).
-#                    Это наш VPS (сценарий 1) или VPS заказчика, который обслуживаем мы (сценарий 2).
-#   kind: external — сервер заказчика (сценарий 3): мы только подстраиваем робота под его туннель
-#                    и выдаём интеграционный пакет (fleet kit).
+#   kind: hub      — наш сервер, налаштований однією командою з програми (лише WireGuard):
+#                    пілоти ходять до НРК напряму через сервер. Адресу, ключ сервера й мережі
+#                    програма записує сюди сама, коли пілот вставить відповідь сервера.
+#   kind: managed  — сервер із нашим стеком (WireGuard + MediaMTX + арбітр).
+#                    Це наш VPS (сценарій 1) або VPS замовника, який обслуговуємо ми (сценарій 2).
+#   kind: external — сервер замовника (сценарій 3): ми лише підлаштовуємо НРК під його тунель
+#                    і видаємо файли підключення (fleet kit).
 #
-# Сети площадки. Не должны пересекаться между собой, с другими площадками,
-# с внутренней сетью робота 192.168.88.0/24 и с CGNAT операторов 100.64.0.0/10:
-#   tunnel     — адреса WireGuard: сервер .1, робот со slot N — .(1 + N)
-#   operators  — адреса операторов: оператор с id K — .K (только managed)
-#   robot_lans — по блоку /28 на робота: сюда через netmap видна сеть робота 192.168.88.0/28
+# Мережі майданчика. Не повинні перетинатися між собою, з іншими майданчиками,
+# із внутрішньою мережею НРК 192.168.88.0/24 і з CGNAT операторів 100.64.0.0/10:
+#   tunnel     — адреси WireGuard: сервер .1, НРК зі slot N — .(1 + N)
+#   operators  — адреси операторів: оператор з id K — .K (лише managed)
+#   robot_lans — по блоку /28 на НРК: сюди через netmap видно мережу НРК 192.168.88.0/28
 #
-# endpoint — всегда DNS-имя, не IP: тогда площадку можно перенести на другой сервер,
-# не трогая роботов (перенесли стек вместе с ключами, поменяли DNS).
-
-service:
-  # Сервисный туннель к нам: только управление MikroTik (ssh, winbox) и обновления.
-  # Видео и телеметрия по нему не идут. Включается у робота флагом service_tunnel.
-  host: ops.flu.example.com          # куда деплоить (ssh)
-  ssh_user: root
-  endpoint: ops.flu.example.com:51900
-  network: 10.99.0.0/16              # .0.1 — сервер, инженер с id K — .0.(1 + K), робот — по глобальному id
-  engineers:
-    - {name: engineer1, id: 1}
+# endpoint — краще DNS-ім'я, а не IP: тоді майданчик можна перенести на інший сервер,
+# не чіпаючи НРК (перенесли стек разом із ключами, змінили DNS). IP теж працює.
 
 sites:
-  # Сценарий 1: наш VPS, отдельный экземпляр стека под заказчика
-  flu-acme:
-    kind: managed
-    customer: ACME
-    host: vps1.flu.example.com
-    ssh_user: root
-    endpoint: acme.vpn.flu.example.com:51821
+  # Наш сервер. Заповнюється сам після вставки відповіді сервера в програмі.
+  main:
+    kind: hub
+    customer: FLU
+    host: 203.0.113.10              # приклад; програма замінить справжньою адресою
+    endpoint: 203.0.113.10:51820    # куди підключаються НРК і пілоти (UDP)
     network:
       tunnel: 10.150.0.0/24
       operators: 10.150.1.0/24
       robot_lans: 10.150.16.0/20
 
-  # Сценарий 2: VPS заказчика, стек ставим и обслуживаем мы
-  globex:
-    kind: managed
-    customer: Globex
-    host: robots.globex.example.com
-    ssh_user: root
-    endpoint: robots.globex.example.com:51820
-    network:
-      tunnel: 10.160.0.0/24
-      operators: 10.160.1.0/24
-      robot_lans: 10.160.16.0/20
-
-  # Сценарий 3: свой сервер заказчика, только туннель
-  initech:
-    kind: external
-    customer: Initech
-    vpn: wireguard
-    endpoint: vpn.initech.example.com:51820
-    server_pubkey: "dGVzdC1rZXktcmVwbGFjZS13aXRoLWN1c3RvbWVycyE="   # пример: заменить ключом сервера заказчика
-    server_ip: 172.20.5.1               # адрес сервера заказчика в туннеле
-    allowed_sources: [172.20.5.1]       # кому робот разрешает MAVLink и RTSP
-    network:
-      tunnel: 172.20.5.0/26
-      robot_lans: 172.20.5.64/26
+# Приклади інших сценаріїв: розкоментуйте й підставте свої дані.
+#
+#  customer-vps:                    # сценарій 2: VPS замовника, стек ставимо й обслуговуємо ми
+#    kind: managed
+#    customer: Замовник
+#    host: robots.customer.example
+#    ssh_user: root
+#    endpoint: robots.customer.example:51820
+#    network:
+#      tunnel: 10.160.0.0/24
+#      operators: 10.160.1.0/24
+#      robot_lans: 10.160.16.0/20
+#
+#  customer-own:                    # сценарій 3: власний сервер замовника, лише тунель
+#    kind: external
+#    customer: Замовник
+#    vpn: wireguard
+#    endpoint: vpn.customer.example:51820
+#    server_pubkey: "<відкритий ключ WireGuard їхнього сервера>"
+#    server_ip: 172.20.5.1          # адреса їхнього сервера в тунелі
+#    allowed_sources: [172.20.5.1]  # кому НРК дозволяє MAVLink і RTSP
+#    network:
+#      tunnel: 172.20.5.0/26        # мережі виділяє замовник
+#      robot_lans: 172.20.5.64/26
+#
+# Сервісний тунель до нас: лише керування MikroTik (ssh, winbox) та оновлення.
+# Відео й телеметрія ним не йдуть. Вмикається в НРК прапорцем service_tunnel.
+#
+# service:
+#   host: ops.example.com
+#   ssh_user: root
+#   endpoint: ops.example.com:51900
+#   network: 10.99.0.0/16           # .0.1 — сервер, інженер з id K — .0.(1 + K), НРК — за глобальним id
+#   engineers:
+#     - {name: engineer1, id: 1}

@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "fleet-ui-demo",
+      "name": "fleet-ui",
       "runtimeExecutable": "C:\\Work\\FLU\\.venv\\Scripts\\python.exe",
-      "runtimeArgs": ["-m", "fleet", "ui", "--no-browser", "--root", "C:\\Users\\moder\\AppData\\Local\\Temp\\claude\\C--Work-FLU\\f43d8256-9722-4b4a-8a0c-6ba0fc692b38\\scratchpad\\smoke"],
+      "runtimeArgs": ["-m", "fleet", "ui", "--no-browser"],
       "port": 8765,
       "url": "http://localhost:8765"
     }

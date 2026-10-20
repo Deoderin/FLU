@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLU · НРК</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --panel: #ffffff; --fg: #161b24; --muted: #5f6878; --line: #dfe3ea; --soft: #eef1f5;
+    --accent: #2357d4; --accent-fg: #ffffff; --ok: #1d8348; --warn: #9a5c00; --bad: #c0392b;
+    --code-bg: #11151c; --code-fg: #d7dde8; --r: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111419; --panel: #191d25; --fg: #e8ebf0; --muted: #9aa2b3; --line: #2a303b; --soft: #212732;
+      --accent: #6f93ff; --accent-fg: #0c1120; --ok: #4cc38a; --warn: #e2a33c; --bad: #ef6a5b; --code-bg: #0b0e13;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, textarea { font: inherit; color: inherit; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .hidden { display: none !important; }
+
+  header { background: var(--panel); border-bottom: 1px solid var(--line); }
+  .head { max-width: 820px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; }
+  .head b { font-size: 18px; margin-right: auto; }
+  .head a { font-size: 14px; }
+  .lang { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .lang button { border: 0; background: var(--panel); height: 32px; padding: 0 12px; font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
+  .lang button.on { background: var(--accent); color: var(--accent-fg); }
+
+  main { max-width: 820px; margin: 0 auto; padding: 22px 20px 60px; display: grid; gap: 14px; }
+  .intro { margin: 0 0 4px; color: var(--muted); }
+  .banner { padding: 12px 16px; border-radius: var(--r); border: 1px solid var(--bad); color: var(--bad); background: var(--panel); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+          display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 16px; }
+  .card.locked { opacity: .5; }
+  .card.locked .body * { pointer-events: none; }
+  .dot { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 15px;
+         background: var(--soft); color: var(--muted); }
+  .dot.done { background: var(--ok); color: #fff; }
+  .dot.now { background: var(--accent); color: var(--accent-fg); }
+  .title { font-size: 18px; font-weight: 700; line-height: 34px; }
+  .body { display: grid; gap: 12px; min-width: 0; }
+  .hint { color: var(--muted); font-size: 14.5px; margin: 0; }
+  ol.hint { padding-left: 20px; display: grid; gap: 4px; }
+  .summary { font-size: 15px; overflow-wrap: anywhere; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  label.field { display: grid; gap: 5px; font-size: 14px; color: var(--muted); flex: 1 1 200px; min-width: 0; }
+  input[type=text], input[type=password], textarea { width: 100%; height: 42px; padding: 0 12px; border-radius: 9px;
+         border: 1px solid var(--line); background: var(--panel); }
+  textarea { height: 110px; padding: 10px 12px; resize: vertical; font: 13px/1.45 ui-monospace, Consolas, monospace; }
+  button.btn { height: 44px; padding: 0 20px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel);
+               cursor: pointer; font-weight: 600; white-space: nowrap; }
+  button.btn:hover:not(:disabled) { background: var(--soft); }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  button.btn.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+  button.btn:disabled { opacity: .45; cursor: default; }
+  button.link { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font-size: 14px; text-decoration: underline; }
+  .sub { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
+  .sub b { font-size: 15px; }
+  .status { font-size: 14.5px; font-weight: 600; }
+  .addr { font: 700 20px ui-monospace, Consolas, monospace; padding: 8px 12px; border-radius: 9px; background: var(--soft); display: inline-block; }
+  pre.code, pre.log { margin: 0; background: var(--code-bg); color: var(--code-fg); border-radius: 9px; padding: 12px 14px;
+           font: 12.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+  ul.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+  ul.checks li { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; }
+  @media (max-width: 560px) {
+    .card { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 16px; }
+    main { padding: 14px 12px 40px; }
+    .head { padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="head">
+    <b id="title"></b>
+    <button class="link" id="logs-link" onclick="openLogs()"></button>
+    <a href="/advanced" id="adv-link"></a>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="uk" onclick="setLang('uk')">UK</button>
+      <button data-lang="en" onclick="setLang('en')">EN</button>
+    </div>
+  </div>
+</header>
+<main>
+  <p class="intro" id="intro"></p>
+  <div id="fatal" class="banner hidden"></div>
+  <div id="steps"></div>
+  <section class="card hidden" id="log-card">
+    <div class="dot">…</div>
+    <div class="body">
+      <div class="title" id="log-title"></div>
+      <pre class="log" id="log"></pre>
+      <div class="row" style="align-items: center">
+        <button class="btn" id="copy-log" onclick="copyLog()"></button>
+        <button class="link" id="open-logs" onclick="openLogs()"></button>
+        <span class="hint" id="log-path"></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const I18N = {
+  uk: {
+    title: "FLU · налаштування НРК", adv: "Розширений режим",
+    intro: "Йдіть по кроках зверху вниз. Де написано «скопіювати» — натисніть кнопку, де «вставити» — клацніть правою кнопкою миші в потрібному місці.",
+    s1: "Пілот і НРК", pilot: "Ваше ім'я (латиницею)", pilot_ph: "наприклад, ivan", serial: "Заводський номер НРК", serial_ph: "наприклад, FLU-2026-0001",
+    s1_btn: "Далі", s1_done: "Пілот {pilot} · НРК {serial} ({name})", s1_new: "Інший НРК",
+    s1_need: "Вкажіть ім'я і заводський номер НРК",
+    s2: "Сервер: вставте команду",
+    s2a: "1. Відкрийте сервер", host: "Адреса сервера", host_ph: "наприклад, 203.0.113.10", user: "Користувач",
+    s2a_btn: "Відкрити термінал сервера", s2a_hint: "Відкриється чорне вікно. Якщо спитає «Are you sure you want to continue connecting» — надрукуйте yes і Enter. Потім введіть пароль сервера і Enter (символів пароля не видно — так і має бути).",
+    s2a_alt: "Або зайдіть на сервер через веб-консоль у панелі хостингу.",
+    s2b: "2. Скопіюйте команду й вставте її на сервері", s2b_btn: "Скопіювати команду", copied: "Скопійовано ✓",
+    s2b_hint: "У вікні сервера клацніть правою кнопкою миші — команда вставиться — і натисніть Enter. Зачекайте до хвилини.",
+    s2b_both: "Команда сама розбереться: якщо WireGuard на сервері ще немає — встановить, якщо вже є — лише додасть пілота й НРК.",
+    show_cmd: "Показати команду", hide_cmd: "Сховати команду",
+    s3: "Відповідь сервера", s3_hint: "Сервер виведе рядок, що починається з FLU1: і закінчується на :END. Виділіть його мишею повністю, скопіюйте (Enter або Ctrl+C) і вставте сюди.",
+    s3_ph: "FLU1:....:END", s3_btn: "Застосувати", s3_done: "Сервер {endpoint} · ваша адреса {pilot_ip} · НРК {name}, слот {slot}",
+    s3_again: "Вставити іншу відповідь",
+    s4: "Пілот у WireGuard", s4_btn: "Створити пілота", s4_hint: "Windows спитає дозвіл адміністратора — натисніть «Так». Після цього в програмі WireGuard з'явиться тунель {tunnel}.",
+    s4_running: "Тунель {tunnel} працює ✓", s4_stopped: "Тунель {tunnel} вимкнено — увімкніть його в програмі WireGuard (кнопка Activate)",
+    s4_missing: "", s4_unsupported: "Це не Windows: імпортуйте конфіг пілота у WireGuard вручну.",
+    s4_no_wg: "WireGuard не встановлено — запустіть setup.cmd ще раз.", s4_again: "Створити ще раз",
+    s5: "Роутер", s5_hint: "Роутер скинуто до заводських налаштувань. Під'єднайте ноутбук кабелем у порт 2, 3, 4 або 5 роутера (не в 1 — він для Starlink), зачекайте 30 секунд і натисніть «Перевірити підключення».",
+    s5_pwd: "Пароль роутера (якщо в WinBox входите без пароля — лишіть порожнім)", s5_btn: "Прошити роутер", s5_done: "Роутер прошито ✓",
+    s5_check: "Перевірити підключення", s5_checking: "Перевіряю кабель і шукаю роутер… (кілька секунд)", s5_found: "Знайдено роутер: {text}",
+    s5_noip: "У роутера немає IP-адреси — скиньте його кнопкою Reset до заводських налаштувань.",
+    s5_many: "Знайдено кілька роутерів MikroTik: вимкніть Wi-Fi на ноутбуці й лишіть під'єднаним лише роутер НРК.",
+    s5_fw: "Якщо Windows спитає дозвіл для Python у мережі — натисніть «Дозволити»: так програма бачить роутер.",
+    s5_confirm: "Роутер буде скинуто й перепрошито під цей НРК. Продовжити?",
+    s6: "Готово", s6_hint: "Під'єднайте Starlink у порт 1 роутера та увімкніть НРК. Коли він вийде на зв'язок, підключайтеся в QGroundControl:",
+    logs: "Журнали", log_saved: "Журнал: {log}", copy_log: "Скопіювати журнал", open_logs: "Відкрити теку з журналами",
+    failed_log: "Не вийшло — подробиці в «Ході виконання» нижче. Журнал збережено, його можна надіслати.",
+    s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → тип TCP, адреса й порт:",
+    s6_btn: "Перевірити зв'язок з НРК", s6_last: "Остання перевірка: {time}",
+    running: "Виконується… {s} с", done: "Готово ✓", failed: "Не вийшло — подробиці нижче", log: "Хід виконання",
+    chk: { inventory: "налаштування", registration: "реєстрація", mavlink: "зв'язок з НРК (MAVLink)", params: "параметри", gps: "GPS",
+           battery: "батарея", cameras: "камери", mikrotik: "роутер", mikrotik_config: "роутер: конфіг", site_tunnel: "тунель роутера",
+           mikrotik_drift: "роутер: зміни", lte: "LTE", arbiter: "арбітр", cam1: "камера 1", cam2: "камера 2" },
+  },
+  en: {
+    title: "FLU · UGV setup", adv: "Advanced mode",
+    intro: "Go through the steps from top to bottom. Where it says \"copy\", press the button; where it says \"paste\", right-click in that place.",
+    s1: "Pilot and UGV", pilot: "Your name (latin letters)", pilot_ph: "e.g. ivan", serial: "UGV serial number", serial_ph: "e.g. FLU-2026-0001",
+    s1_btn: "Next", s1_done: "Pilot {pilot} · UGV {serial} ({name})", s1_new: "Another UGV",
+    s1_need: "Enter your name and the UGV serial number",
+    s2: "Server: paste the command",
+    s2a: "1. Open the server", host: "Server address", host_ph: "e.g. 203.0.113.10", user: "User",
+    s2a_btn: "Open server terminal", s2a_hint: "A black window opens. If it asks \"Are you sure you want to continue connecting\", type yes and Enter. Then type the server password and Enter (the password is not shown - that is expected).",
+    s2a_alt: "Or log in to the server through the web console of your hosting panel.",
+    s2b: "2. Copy the command and paste it on the server", s2b_btn: "Copy command", copied: "Copied ✓",
+    s2b_hint: "Right-click in the server window - the command is pasted - and press Enter. Wait up to a minute.",
+    s2b_both: "The command figures it out itself: if the server has no WireGuard yet, it installs it; if it has, it only adds the pilot and the UGV.",
+    show_cmd: "Show command", hide_cmd: "Hide command",
+    s3: "Server response", s3_hint: "The server prints a line that starts with FLU1: and ends with :END. Select all of it with the mouse, copy it (Enter or Ctrl+C) and paste it here.",
+    s3_ph: "FLU1:....:END", s3_btn: "Apply", s3_done: "Server {endpoint} · your address {pilot_ip} · UGV {name}, slot {slot}",
+    s3_again: "Paste another response",
+    s4: "Pilot in WireGuard", s4_btn: "Create pilot", s4_hint: "Windows asks for administrator permission - press Yes. Then the tunnel {tunnel} appears in the WireGuard app.",
+    s4_running: "Tunnel {tunnel} is up ✓", s4_stopped: "Tunnel {tunnel} is off - enable it in the WireGuard app (Activate)",
+    s4_missing: "", s4_unsupported: "This is not Windows: import the pilot config into WireGuard manually.",
+    s4_no_wg: "WireGuard is not installed - run setup.cmd again.", s4_again: "Create again",
+    s5: "Router", s5_hint: "The router is reset to factory settings. Connect the laptop with a cable to port 2, 3, 4 or 5 (not 1 - it is for Starlink), wait 30 seconds and press \"Check connection\".",
+    s5_pwd: "Router password (leave empty if WinBox lets you in without one)", s5_btn: "Flash router", s5_done: "Router flashed ✓",
+    s5_check: "Check connection", s5_checking: "Checking the cable and looking for the router… (a few seconds)", s5_found: "Router found: {text}",
+    s5_noip: "The router has no IP address - reset it to factory settings with the Reset button.",
+    s5_many: "Several MikroTik routers found: turn off Wi-Fi on the laptop and keep only the UGV router connected.",
+    s5_fw: "If Windows asks to allow Python on the network, press Allow: that is how the program sees the router.",
+    s5_confirm: "The router will be reset and flashed for this UGV. Continue?",
+    s6: "Done", s6_hint: "Connect Starlink to router port 1 and power on the UGV. When it is online, connect in QGroundControl:",
+    logs: "Logs", log_saved: "Log: {log}", copy_log: "Copy log", open_logs: "Open the logs folder",
+    failed_log: "It did not work - details in Progress below. The log is saved and can be sent.",
+    s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → type TCP, address and port:",
+    s6_btn: "Check the link to the UGV", s6_last: "Last check: {time}",
+    running: "Running… {s} s", done: "Done ✓", failed: "It did not work - details below", log: "Progress",
+    chk: { inventory: "setup", registration: "registration", mavlink: "link to the UGV (MAVLink)", params: "parameters", gps: "GPS",
+           battery: "battery", cameras: "cameras", mikrotik: "router", mikrotik_config: "router: config", site_tunnel: "router tunnel",
+           mikrotik_drift: "router: changes", lte: "LTE", arbiter: "arbiter", cam1: "camera 1", cam2: "camera 2" },
+  },
+};
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} },
+};
+let lang = store.get("fleet-lang") || "uk";
+const t = (key, vars = {}) => (I18N[lang][key] ?? I18N.uk[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+
+const h = (tag, attrs = {}, ...children) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "value") el.value = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c != null && c !== false) el.append(c);
+  return el;
+};
+
+let st = null;          // стан із сервера
+let command = null;     // команда для сервера поточного НРК
+let showCmd = false;
+let message = {};       // повідомлення під кроками: {step: [text, cls]}
+let polling = null;
+let jobStep = null;     // який крок запустив поточну команду
+let routerFound = null; // результат «Знайти роутер»: [рядки, клас]
+const inputs = {};
+
+async function api(path, body) {
+  const headers = { "X-Lang": lang };
+  const opts = body === undefined ? { headers } : {
+    method: "POST", headers: { ...headers, "Content-Type": "application/json", "X-Fleet": "1" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+function setLang(next) { lang = next; store.set("fleet-lang", lang); render(); }
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) {
+    const ta = h("textarea", {}, text);
+    document.body.append(ta); ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }
+}
+
+function field(key, label, attrs) {
+  const input = h("input", { type: "text", ...attrs, value: inputs[key] ?? attrs.value ?? "" });
+  input.addEventListener("input", () => (inputs[key] = input.value));
+  return [h("label", { class: "field" }, label, input), input];
+}
+
+// --- поточний пілот і НРК ------------------------------------------------------
+
+const pilotName = () => store.get("fleet-pilot") || st.pilots[0] || st.local_pilots[0] || "";
+function currentRobot() {
+  const id = Number(store.get("fleet-current"));
+  return st.robots.find((r) => r.id === id) || null;
+}
+
+// --- команди fleet (WireGuard, роутер, перевірка) ---------------------------------
+
+async function run(step, args) {
+  try {
+    jobStep = step;
+    message[step] = [t("running", { s: 0 }), "warn"];
+    const job = await api("/api/run", { args });
+    showJob(job);
+    poll(job.id);
+  } catch (e) {
+    message[step] = [e.message, "bad"];
+    render();
+  }
+}
+
+function poll(id) {
+  clearTimeout(polling);
+  polling = setTimeout(async () => {
+    const job = await api(`/api/jobs/${id}`);
+    showJob(job);
+    if (job.running) poll(id);
+    else { await refresh(); }
+  }, 700);
+}
+
+let lastJob = null;
+
+async function copyLog() {
+  if (!lastJob) return;
+  const text = `${lastJob.command}\n${lastJob.log || ""}\n\n${lastJob.output}`;
+  const b = document.getElementById("copy-log");
+  if (await copyText(text)) { b.textContent = t("copied"); setTimeout(() => (b.textContent = t("copy_log")), 2500); }
+}
+
+async function openLogs() {
+  try { await api("/api/open-logs", {}); } catch (e) { alert(e.message); }
+}
+
+function showJob(job) {
+  const card = document.getElementById("log-card");
+  if (!job) { card.classList.add("hidden"); return; }
+  lastJob = job;
+  card.classList.remove("hidden");
+  document.getElementById("log-title").textContent = t("log");
+  document.getElementById("copy-log").textContent = t("copy_log");
+  document.getElementById("open-logs").textContent = t("open_logs");
+  document.getElementById("log-path").textContent = job.log ? t("log_saved", { log: job.log }) : "";
+  const log = document.getElementById("log");
+  log.textContent = job.output || "…";
+  log.scrollTop = log.scrollHeight;
+  if (jobStep) {
+    message[jobStep] = job.running ? [t("running", { s: job.seconds }), "warn"]
+      : job.code === 0 ? [t("done"), "ok"] : [t("failed_log"), "bad"];
+    const el = document.getElementById(`msg-${jobStep}`);
+    if (el) { el.textContent = message[jobStep][0]; el.className = "status " + message[jobStep][1]; }
+  }
+  document.querySelectorAll("[data-job]").forEach((b) => (b.disabled = job.running));
+}
+
+// --- кроки -------------------------------------------------------------------------
+
+function card(n, state, title, ...body) {
+  return h("section", { class: "card" + (state === "locked" ? " locked" : "") },
+    h("div", { class: "dot " + (state === "done" ? "done" : state === "now" ? "now" : "") }, state === "done" ? "✓" : String(n)),
+    h("div", { class: "body" }, h("div", { class: "title" }, title), ...body,
+      h("div", { id: `msg-${n}`, class: "status " + (message[n]?.[1] || "") }, message[n]?.[0] || "")));
+}
+
+function btn(label, onclick, opts = {}) {
+  return h("button", { class: "btn" + (opts.primary ? " primary" : ""), onclick, disabled: opts.disabled,
+    "data-job": opts.job ? "" : null }, label);
+}
+
+async function prepareCommand(pilot, serial) {
+  const res = await api("/api/simple/prepare", { pilot, serial });
+  command = res.command;
+  store.set("fleet-pilot", pilot);
+  store.set("fleet-current", String(res.robot_id));
+  return res;
+}
+
+function render() {
+  document.documentElement.lang = lang;
+  document.title = t("title");
+  document.querySelectorAll("[data-lang]").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  document.getElementById("title").textContent = t("title");
+  document.getElementById("adv-link").textContent = t("adv");
+  document.getElementById("logs-link").textContent = t("logs");
+  if (lastJob) showJob(lastJob);
+  document.getElementById("intro").textContent = t("intro");
+  const fatal = document.getElementById("fatal");
+  fatal.classList.toggle("hidden", !st || !st.fatal);
+  if (!st || st.fatal) { fatal.textContent = st ? st.fatal : ""; document.getElementById("steps").replaceChildren(); return; }
+
+  const robot = currentRobot();
+  const pilot = pilotName();
+  const done1 = Boolean(robot && pilot);
+  const done3 = Boolean(done1 && robot.provisioned && st.server && st.pilots.includes(pilot));
+  const done4 = st.tunnel.status === "running";
+  const done5 = Boolean(done3 && robot.baseline);
+  const stateOf = (done, ready) => (done ? "done" : ready ? "now" : "locked");
+  const steps = [];
+
+  // 1. Пілот і НРК
+  if (done1 && !inputs.edit1) {
+    steps.push(card(1, "done", t("s1"),
+      h("div", { class: "summary" }, t("s1_done", { pilot, serial: robot.serial, name: robot.name })),
+      h("div", {}, h("button", { class: "link", onclick: () => { inputs.edit1 = "1"; inputs.serial = ""; message = {}; command = null; store.set("fleet-current", null); render(); } }, t("s1_new")))));
+  } else {
+    const [lp, ip] = field("pilot", t("pilot"), { placeholder: t("pilot_ph"), value: pilot });
+    const [ls, is] = field("serial", t("serial"), { placeholder: t("serial_ph") });
+    steps.push(card(1, "now", t("s1"),
+      h("div", { class: "row" }, lp, ls),
+      h("div", {}, btn(t("s1_btn"), async () => {
+        const p = ip.value.trim(), s = is.value.trim();
+        if (!p || !s) { message[1] = [t("s1_need"), "bad"]; render(); return; }
+        try { await prepareCommand(p, s); inputs.edit1 = ""; message[1] = null; await refresh(); }
+        catch (e) { message[1] = [e.message, "bad"]; render(); }
+      }, { primary: true }))));
+  }
+
+  // 2. Сервер: вставте команду
+  const [lh, ih] = field("host", t("host"), { placeholder: t("host_ph"), value: store.get("fleet-server") || (st.server ? st.server.host : "") });
+  const [lu, iu] = field("user", t("user"), { value: "root" });
+  lu.style.flex = "0 1 140px";
+  const copyBtn = btn(t("s2b_btn"), async () => {
+    if (!command) await prepareCommand(pilot, robot.serial);
+    if (await copyText(command)) { copyBtn.textContent = t("copied"); setTimeout(() => (copyBtn.textContent = t("s2b_btn")), 2500); }
+  }, { primary: !done3 });
+  steps.push(card(2, stateOf(done3, done1), t("s2"),
+    h("div", { class: "sub" }, h("b", {}, t("s2a")),
+      h("div", { class: "row" }, lh, lu, btn(t("s2a_btn"), async () => {
+        try { store.set("fleet-server", ih.value.trim()); await api("/api/simple/ssh", { host: ih.value.trim(), user: iu.value.trim() }); message[2] = null; }
+        catch (e) { message[2] = [e.message, "bad"]; }
+        render();
+      })),
+      h("p", { class: "hint" }, t("s2a_hint")), h("p", { class: "hint" }, t("s2a_alt"))),
+    h("div", { class: "sub" }, h("b", {}, t("s2b")),
+      h("div", { class: "row" }, copyBtn,
+        h("button", { class: "link", onclick: async () => { showCmd = !showCmd; if (showCmd && !command) await prepareCommand(pilot, robot.serial); render(); } },
+          showCmd ? t("hide_cmd") : t("show_cmd"))),
+      showCmd && command && h("pre", { class: "code" }, command),
+      h("p", { class: "hint" }, t("s2b_hint")), h("p", { class: "hint" }, t("s2b_both")))));
+
+  // 3. Відповідь сервера
+  if (done3 && !inputs.edit3) {
+    steps.push(card(3, "done", t("s3"),
+      h("div", { class: "summary" }, t("s3_done", { endpoint: st.server.endpoint, pilot_ip: st.pilot_ips[pilot] || "", name: robot.name, slot: robot.slot })),
+      h("div", {}, h("button", { class: "link", onclick: () => { inputs.edit3 = "1"; render(); } }, t("s3_again")))));
+  } else {
+    const ta = h("textarea", { placeholder: t("s3_ph"), spellcheck: "false" }, inputs.response || "");
+    ta.addEventListener("input", () => (inputs.response = ta.value));
+    steps.push(card(3, stateOf(false, done1), t("s3"),
+      h("p", { class: "hint" }, t("s3_hint")), ta,
+      h("div", {}, btn(t("s3_btn"), async () => {
+        try { await api("/api/simple/apply", { text: ta.value }); inputs.response = ""; inputs.edit3 = ""; message[3] = null; await refresh(); }
+        catch (e) { message[3] = [e.message, "bad"]; render(); }
+      }, { primary: true }))));
+  }
+
+  // 4. Пілот у WireGuard
+  const tunnel = st.tunnel.name;
+  const s4note = st.wireguard === false ? [t("s4_no_wg"), "bad"]
+    : done4 ? [t("s4_running", { tunnel }), "ok"]
+    : st.tunnel.status === "stopped" ? [t("s4_stopped", { tunnel }), "warn"]
+    : st.tunnel.status === "unsupported" ? [t("s4_unsupported"), "warn"] : null;
+  steps.push(card(4, stateOf(done4, done3), t("s4"),
+    h("p", { class: "hint" }, t("s4_hint", { tunnel })),
+    s4note && h("div", { class: "status " + s4note[1] }, s4note[0]),
+    h("div", {}, btn(done4 ? t("s4_again") : t("s4_btn"), () => run(4, ["wg-install", "--site", st.site, "--pilot", pilot]),
+      { primary: done3 && !done4, job: true, disabled: !done3 || st.wireguard === false }))));
+
+  // 5. Роутер
+  const [lpw, ipw] = field(`pwd-${robot?.id}`, t("s5_pwd"), { type: "password" });
+  const found = routerFound && h("div", { class: "status " + routerFound[1] }, ...routerFound[0].map((line) => h("div", {}, line)));
+  steps.push(card(5, stateOf(done5, done3), t("s5"),
+    h("p", { class: "hint" }, t("s5_hint")),
+    done5 && h("div", { class: "status ok" }, t("s5_done")),
+    h("div", { class: "row" }, btn(t("s5_check"), async () => {
+      routerFound = [[t("s5_checking")], "warn"];
+      render();
+      try {
+        const res = await api("/api/simple/check-router", {});
+        const linkOk = ["ok", "unknown"].includes(res.link.status);
+        const lines = [res.link.message, ...res.routers.map((r) => t("s5_found", { text: r.text }))];
+        const many = res.routers.length > 1 && !res.routers.some((r) => r.ipv4 === "192.168.88.1");
+        const noip = res.routers.length === 1 && !res.routers[0].ipv4;
+        if (many) lines.push(t("s5_many"));
+        if (noip) lines.push(t("s5_noip"));
+        if (linkOk && !res.routers.length) lines.push(t("s5_fw"));
+        routerFound = [lines, !linkOk || noip ? "bad" : many ? "warn" : "ok"];
+      } catch (e) { routerFound = [[e.message], "bad"]; }
+      render();
+    })),
+    found,
+    h("div", { class: "row" }, lpw, btn(t("s5_btn"), () => {
+      if (!confirm(t("s5_confirm"))) return;
+      run(5, ["bench", "mikrotik", "--id", String(robot.id), "--password", ipw.value]);
+    }, { primary: done3 && !done5, job: true, disabled: !done3 }))));
+
+  // 6. Готово
+  const rep = robot && robot.report;
+  steps.push(card(6, stateOf(Boolean(rep && !rep.fail), done5), t("s6"),
+    h("p", { class: "hint" }, t("s6_hint")),
+    robot && robot.qgc && h("div", {}, h("p", { class: "hint" }, t("s6_qgc")), h("span", { class: "addr" }, robot.qgc.replace(":", "  :  "))),
+    h("div", {}, btn(t("s6_btn"), () => run(6, ["test", "--id", String(robot.id)]), { job: true, disabled: !done5, primary: done5 })),
+    rep && h("p", { class: "hint" }, t("s6_last", { time: rep.time })),
+    rep && h("ul", { class: "checks" }, rep.checks.filter((c) => c.status !== "SKIP").map((c) => h("li", {},
+      h("b", { class: c.status === "PASS" ? "ok" : c.status === "FAIL" ? "bad" : "warn" }, c.status === "PASS" ? "OK" : c.status),
+      h("span", {}, I18N[lang].chk[c.key] || c.name, c.detail && h("div", { class: "muted" }, c.detail)))))));
+
+  document.getElementById("steps").replaceChildren(...steps.map((s, i) => (i ? [h("div", { style: "height:14px" }), s] : s)).flat());
+}
+
+async function refresh() {
+  try {
+    st = await api("/api/simple");
+    render();
+    if (st.job && st.job.running) { showJob(st.job); poll(st.job.id); }
+  } catch (e) {
+    document.getElementById("fatal").classList.remove("hidden");
+    document.getElementById("fatal").textContent = e.message;
+  }
+}
+
+refresh();
+setInterval(() => {
+  const a = document.activeElement;
+  if (a && ["INPUT", "TEXTAREA"].includes(a.tagName)) return;  // не заважаємо вводити
+  if (!(st && st.job && st.job.running)) refresh();
+}, 15000);
+</script>
+</body>
+</html>

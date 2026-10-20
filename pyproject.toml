@@ -5,20 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flu-fleet"
 version = "0.1.0"
-description = "Конвейер прошивки и обслуживания роботов FLU"
-requires-python = ">=3.11"
+description = "Конвеєр прошивки та обслуговування НРК FLU"
+# <3.15: під 3.15 ще немає готових збірок pymavlink і PyYAML для Windows
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "Jinja2~=3.1",
     "ruamel.yaml~=0.19.1",
     "cryptography>=44",
     "paramiko~=5.1",
     "pymavlink~=2.4.50",
-    "pyserial~=3.5",  # pymavlink открывает COM-порты через него, UI показывает список портов
+    "pyserial~=3.5",  # pymavlink відкриває COM-порти через нього, UI показує список портів
     "requests~=2.34",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "aiohttp~=3.14", "PyYAML~=6.0"]
+docs = ["playwright>=1.40"]  # docs/tools/screens.py: скріншоти для docs/flow.md
 
 [project.scripts]
 fleet = "fleet.cli:main"
@@ -27,7 +29,7 @@ fleet = "fleet.cli:main"
 include = ["fleet*"]
 
 [tool.setuptools.package-data]
-fleet = ["ui.html"]
+fleet = ["ui.html", "simple.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

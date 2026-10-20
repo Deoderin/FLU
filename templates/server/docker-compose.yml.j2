@@ -1,6 +1,6 @@
 # fleet: stack of site {{ site.name }} - generated, do not edit.
 # host network: services bind to the site's tunnel address {{ server_ip }}
-# and reach robots through the WireGuard interface of the host.
+# and reach UGVs through the WireGuard interface of the host.
 # Both services re-read config/ on change, so a deploy does not drop operators.
 name: fleet-{{ site.name }}
 services:

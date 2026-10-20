@@ -1,13 +1,18 @@
-"""Простой локальный веб-интерфейс к fleet: `fleet ui`.
+"""Локальний веб-інтерфейс до fleet: `fleet ui`.
 
-Показывает площадки и роботов, запускает команды fleet и показывает их вывод.
-Слушает только 127.0.0.1: это интерфейс инженера на стенде, не операторов.
-Команды выполняются тем же CLI в отдельном процессе, поэтому логика одна.
+/          — простий режим: пілот і НРК, команда для сервера, відповідь сервера,
+             тунель пілота у WireGuard і прошивка роутера. Лише кнопки й «скопіювати-вставити».
+/advanced  — розширений режим для інженера: майданчики, НРК і всі кроки.
+
+Слухає лише 127.0.0.1. Довгі дії (WireGuard, роутер, тест) виконуються тим самим CLI
+в окремому процесі, тож логіка одна. Мова (uk / en) приходить заголовком X-Lang.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -18,26 +23,60 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from . import __version__
 from . import addressing as A
+from .i18n import LANGS, T, get_lang, set_lang
 from .inventory import Inventory, InventoryError
 from .keystore import SecretError, SecretStore
 
-PAGE = Path(__file__).with_name("ui.html")
+PAGES = {"/": Path(__file__).with_name("simple.html"), "/advanced": Path(__file__).with_name("ui.html")}
 PKG_PARENT = Path(__file__).resolve().parents[1]
-COMMANDS = {"check", "render", "provision", "bench", "fc", "deploy-server", "kit", "move", "test"}
+COMMANDS = {"check", "render", "provision", "bench", "fc", "deploy-server", "kit", "move", "test", "wg-install"}
+HOST_RE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 MAX_OUTPUT = 200_000
 
 
-class Job:
-    """Команда fleet в отдельном процессе; вывод копится, пока она идёт."""
+def mask_args(args: list[str]) -> list[str]:
+    """Пароль роутера не потрапляє ні на екран, ні в журнал."""
+    out = list(args)
+    for i, a in enumerate(out[:-1]):
+        if a == "--password":
+            out[i + 1] = "***"
+    return out
 
-    def __init__(self, args: list[str], root: Path):
+
+def log_dir(root: Path) -> Path:
+    path = root / "build" / "logs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def ui_log(root: Path, text: str) -> None:
+    """Подія простого режиму в build/logs/ui.log: що натиснули і чим це закінчилось."""
+    with (log_dir(root) / "ui.log").open("a", encoding="utf-8") as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {text}\n")
+
+
+class Job:
+    """Команда fleet в окремому процесі; вивід накопичується, поки вона йде,
+    і паралельно пишеться в журнал build/logs/<час>-<команда>.log."""
+
+    def __init__(self, args: list[str], root: Path, lang: str):
         self.id = uuid.uuid4().hex[:8]
         self.args = args
+        self.shown = "fleet " + " ".join(mask_args(args))
         self.output = ""
         self.code: int | None = None
         self.started = time.time()
-        env = {**os.environ, "FLEET_ROOT": str(root), "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
+        words = list(itertools.takewhile(lambda a: not a.startswith("-"), args))[:2]  # «bench mikrotik», без --id 1
+        slug = re.sub(r"[^a-z0-9-]+", "-", "-".join(words).lower()).strip("-") or "fleet"
+        self.log_path = log_dir(root) / f"{time.strftime('%Y%m%d-%H%M%S')}-{slug}.log"
+        self.log_rel = self.log_path.relative_to(root).as_posix()
+        self._log = self.log_path.open("w", encoding="utf-8")
+        self._log.write(f"# {time.strftime('%Y-%m-%d %H:%M:%S')}  {self.shown}\n# fleet {__version__}, Python {sys.version.split()[0]}\n\n")
+        env = {**os.environ, "FLEET_ROOT": str(root), "FLEET_LANG": lang,
+               "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "fleet", *args], cwd=PKG_PARENT, env=env, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
@@ -47,7 +86,11 @@ class Job:
     def _pump(self) -> None:
         for line in self.proc.stdout:
             self.output = (self.output + line)[-MAX_OUTPUT:]
+            self._log.write(line)
+            self._log.flush()
         self.code = self.proc.wait()
+        self._log.write(f"\n# exit code {self.code}, {round(time.time() - self.started)} s\n")
+        self._log.close()
 
     @property
     def running(self) -> bool:
@@ -56,11 +99,12 @@ class Job:
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "command": "fleet " + " ".join(self.args),
+            "command": self.shown,
             "running": self.running,
             "code": self.code,
             "seconds": round(time.time() - self.started),
             "output": self.output,
+            "log": self.log_rel,
         }
 
 
@@ -87,11 +131,36 @@ def serial_ports() -> list[dict]:
     return [{"device": p.device, "description": p.description} for p in list_ports.comports()]
 
 
+def robot_row(root: Path, inv: Inventory, r) -> dict:
+    from .render import Renderer
+
+    rdir = root / "build" / "robots" / r.name
+    site = inv.sites.get(r.site) if r.site else None
+    qgc = Renderer(inv, SecretStore(root)).qgc_address(r) if site else None
+    return {
+        "id": r.id,
+        "name": r.name,
+        "serial": r.serial,
+        "platform": r.platform,
+        "site": r.site,
+        "site_kind": site.kind if site else None,
+        "slot": r.slot,
+        "provisioned": r.provisioned,
+        "service_tunnel": r.service_tunnel,
+        "baseline": (rdir / "baseline.rsc").exists(),
+        "files": sorted(p.relative_to(root).as_posix() for p in rdir.glob("*") if p.is_file()),
+        "mavlink": f"tcp:{qgc}" if qgc else None,
+        "qgc": qgc,
+        "report": latest_report(root, r.name),
+    }
+
+
 def build_state(root: Path) -> dict:
+    """Стан для розширеного режиму."""
     try:
         inv = Inventory.load(root)
     except InventoryError as exc:
-        return {"root": str(root), "fatal": str(exc), "errors": [], "sites": [], "robots": []}
+        return {"root": str(root), "fatal": str(exc), "errors": [], "sites": [], "robots": [], "service": None, "ports": []}
     store = SecretStore(root)
 
     sites = []
@@ -104,29 +173,9 @@ def build_state(root: Path) -> dict:
             "host": s.host,
             "robots": len(inv.robots_on(s.name)),
             "capacity": A.capacity(s),
-            "has_key": store.has_site(s.name) if s.managed else None,
+            "has_key": store.has_site(s.name) if s.managed else bool(s.server_pubkey) if s.hub else None,
             "operators": [o.name for o in inv.operators_on(s.name)],
             "panel": f"http://{A.server_ip(s)}:{A.PANEL_PORT}" if s.managed else None,
-        })
-
-    robots = []
-    for r in sorted(inv.robots.values(), key=lambda r: r.id):
-        rdir = root / "build" / "robots" / r.name
-        site = inv.sites.get(r.site) if r.site else None
-        robots.append({
-            "id": r.id,
-            "name": r.name,
-            "serial": r.serial,
-            "platform": r.platform,
-            "site": r.site,
-            "site_kind": site.kind if site else None,
-            "slot": r.slot,
-            "provisioned": r.provisioned,
-            "service_tunnel": r.service_tunnel,
-            "baseline": (rdir / "baseline.rsc").exists(),
-            "files": sorted(p.relative_to(root).as_posix() for p in rdir.glob("*") if p.is_file()),
-            "mavlink": f"tcp:{A.server_ip(site)}:{A.arbiter_port(r.slot)}" if r.provisioned and site.managed else None,
-            "report": latest_report(root, r.name),
         })
 
     service = None
@@ -137,10 +186,46 @@ def build_state(root: Path) -> dict:
         "root": str(root),
         "errors": inv.validate(),
         "sites": sites,
-        "robots": robots,
+        "robots": [robot_row(root, inv, r) for r in sorted(inv.robots.values(), key=lambda r: r.id)],
         "service": service,
         "ports": serial_ports(),
     }
+
+
+def simple_state(root: Path) -> dict:
+    """Стан для простого режиму: hub-майданчик, пілоти цього ноутбука, НРК, тунель."""
+    from .hub import HubError, hub_site
+    from .pilot import tunnel_name, tunnel_status, wireguard_installed
+
+    try:
+        inv = Inventory.load(root)
+        site = hub_site(inv)
+    except (InventoryError, HubError) as exc:
+        return {"fatal": str(exc)}
+    name = tunnel_name(site.name)
+    local = sorted(p.stem for p in (root / "secrets" / "operators").glob("*.json"))
+    robots = [robot_row(root, inv, r) for r in sorted(inv.robots.values(), key=lambda r: r.id) if r.site == site.name]
+    return {
+        "site": site.name,
+        "server": {"endpoint": str(site.endpoint), "host": site.host} if site.server_pubkey else None,
+        "pilots": [o.name for o in inv.operators_on(site.name)],
+        "pilot_ips": {o.name: str(A.operator_ip(site, o)) for o in inv.operators_on(site.name)},
+        "local_pilots": local,
+        "robots": robots,
+        "tunnel": {"name": name, "status": tunnel_status(name)},
+        "wireguard": wireguard_installed(),
+        "errors": inv.validate(),
+    }
+
+
+def open_ssh_terminal(host: str, user: str) -> None:
+    """Нове вікно консолі з `ssh user@host`: пілот лише вводить пароль і вставляє команду."""
+    if not HOST_RE.match(host) or not USER_RE.match(user):
+        raise ValueError(T("некоректна адреса сервера або ім'я користувача", "invalid server address or user name"))
+    if os.name != "nt":
+        raise ValueError(T(f"відкрийте термінал і виконайте: ssh {user}@{host}", f"open a terminal and run: ssh {user}@{host}"))
+    # start "" — порожній заголовок вікна, далі сама команда
+    subprocess.Popen(["cmd", "/c", "start", "", "cmd", "/k", "ssh", f"{user}@{host}"], cwd=str(Path.home()))
 
 
 class UiServer(ThreadingHTTPServer):
@@ -156,8 +241,9 @@ class UiServer(ThreadingHTTPServer):
     def start(self, args: list[str]) -> Job:
         with self.lock:
             if self.current and self.current.running:
-                raise RuntimeError(f"уже выполняется: {self.current.to_dict()['command']}")
-            job = Job(args, self.root)
+                raise RuntimeError(T(f"уже виконується: {self.current.to_dict()['command']}",
+                                     f"already running: {self.current.to_dict()['command']}"))
+            job = Job(args, self.root, get_lang())
             self.jobs[job.id] = job
             self.current = job
             return job
@@ -167,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
     server: UiServer
 
     def log_message(self, fmt, *args) -> None:
-        pass  # без шума в консоли
+        pass  # без шуму в консолі
 
     def _send(self, status: int, body: bytes, ctype: str) -> None:
         self.send_response(status)
@@ -183,31 +269,39 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, status: int, message: str) -> None:
         self._json({"error": message}, status)
 
-    def _host_ok(self) -> bool:
-        # Защита от DNS rebinding: чужой сайт, указавший своё имя на 127.0.0.1, не пройдёт
+    def _prepare(self) -> bool:
+        lang = self.headers.get("X-Lang")
+        set_lang(lang if lang in LANGS else os.environ.get("FLEET_LANG"))
+        # Захист від DNS rebinding: чужий сайт, що вказав своє ім'я на 127.0.0.1, не пройде
         port = self.server.server_address[1]
-        return self.headers.get("Host") in (f"127.0.0.1:{port}", f"localhost:{port}")
+        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+            self._error(403, T("доступ лише з 127.0.0.1", "access from 127.0.0.1 only"))
+            return False
+        return True
+
+    def _job(self) -> dict | None:
+        return self.server.current.to_dict() if self.server.current else None
 
     def do_GET(self) -> None:
-        if not self._host_ok():
-            return self._error(403, "доступ только с 127.0.0.1")
+        if not self._prepare():
+            return
         url = urlparse(self.path)
         root = self.server.root
-        if url.path == "/":
-            return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+        if url.path in PAGES:
+            return self._send(200, PAGES[url.path].read_bytes(), "text/html; charset=utf-8")
         if url.path == "/api/state":
-            state = build_state(root)
-            state["job"] = self.server.current.to_dict() if self.server.current else None
-            return self._json(state)
+            return self._json({**build_state(root), "job": self._job()})
+        if url.path == "/api/simple":
+            return self._json({**simple_state(root), "job": self._job()})
         if url.path.startswith("/api/jobs/"):
             job = self.server.jobs.get(url.path.rsplit("/", 1)[-1])
-            return self._json(job.to_dict()) if job else self._error(404, "нет такой команды")
+            return self._json(job.to_dict()) if job else self._error(404, T("немає такої команди", "no such command"))
         if url.path == "/api/file":
             rel = parse_qs(url.query).get("path", [""])[0]
             build = (root / "build").resolve()
             path = (root / rel).resolve()
             if build not in path.parents or not path.is_file():
-                return self._error(404, "показываются только файлы из build/")
+                return self._error(404, T("показуються лише файли з build/", "only files from build/ are shown"))
             return self._send(200, path.read_bytes(), "text/plain; charset=utf-8")
         if url.path == "/api/camera-password":
             try:
@@ -215,37 +309,82 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"password": SecretStore(root).robot(robot_id)["camera_password"]})
             except (ValueError, SecretError) as exc:
                 return self._error(404, str(exc))
-        return self._error(404, "нет такой страницы")
+        return self._error(404, T("немає такої сторінки", "no such page"))
 
     def do_POST(self) -> None:
-        if not self._host_ok() or self.headers.get("X-Fleet") != "1":
-            return self._error(403, "запрос отклонён")
+        if not self._prepare():
+            return
+        if self.headers.get("X-Fleet") != "1":
+            return self._error(403, T("запит відхилено", "request rejected"))
         url = urlparse(self.path)
         length = int(self.headers.get("Content-Length") or 0)
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except json.JSONDecodeError:
-            return self._error(400, "некорректный JSON")
+            return self._error(400, T("некоректний JSON", "invalid JSON"))
+        root = self.server.root
+
         if url.path == "/api/run":
             args = body.get("args")
             if not (isinstance(args, list) and args and all(isinstance(a, str) for a in args) and args[0] in COMMANDS):
-                return self._error(400, "неизвестная команда")
+                return self._error(400, T("невідома команда", "unknown command"))
             try:
-                return self._json(self.server.start(args).to_dict())
+                job = self.server.start(args)
             except RuntimeError as exc:
                 return self._error(409, str(exc))
+            ui_log(root, f"run: {job.shown} -> {job.log_rel}")
+            return self._json(job.to_dict())
         if url.path == "/api/stop":
             job = self.server.current
             if job and job.running:
                 job.proc.terminate()
             return self._json({"ok": True})
-        return self._error(404, "нет такой страницы")
+
+        # Простий режим: швидкі дії виконуються тут же, без окремого процесу; усе пишеться в ui.log
+        from .hub import HubError, apply_response, prepare
+        action = url.path.rsplit("/", 1)[-1]
+        try:
+            if url.path == "/api/simple/prepare":
+                pilot, serial = str(body.get("pilot", "")).strip(), str(body.get("serial", "")).strip() or None
+                result = prepare(root, pilot, serial)
+                ui_log(root, f"prepare: pilot={pilot} serial={serial} -> nrk id {result['robot_id']}")
+                return self._json(result)
+            if url.path == "/api/simple/apply":
+                summary = apply_response(root, str(body.get("text", "")))
+                ui_log(root, f"apply: {summary}")
+                return self._json(summary)
+            if url.path == "/api/simple/check-router":
+                from .mndp import describe, discover
+                from .netcheck import check_router_link
+                link = check_router_link()
+                routers = [{**r, "text": describe(r)} for r in discover(3.0)]
+                ui_log(root, f"check-router: {link['status']} {link['message']} | routers: {[r['text'] for r in routers]}")
+                return self._json({"link": link, "routers": routers})
+            if url.path == "/api/simple/ssh":
+                host, user = str(body.get("host", "")).strip(), str(body.get("user", "root")).strip() or "root"
+                open_ssh_terminal(host, user)
+                ui_log(root, f"ssh: opened terminal {user}@{host}")
+                return self._json({"ok": True})
+            if url.path == "/api/open-logs":
+                path = log_dir(root)
+                if os.name == "nt":
+                    os.startfile(path)  # Провідник із теки журналів
+                return self._json({"path": str(path)})
+        except (HubError, InventoryError, SecretError, ValueError) as exc:
+            ui_log(root, f"{action}: ERROR {exc}")
+            return self._error(400, str(exc))
+        except Exception:
+            import traceback
+            ui_log(root, f"{action}: UNEXPECTED\n{traceback.format_exc()}")
+            return self._error(500, T("неочікувана помилка — подробиці в журналі build/logs/ui.log",
+                                      "unexpected error - details in the log build/logs/ui.log"))
+        return self._error(404, T("немає такої сторінки", "no such page"))
 
 
 def serve(root: Path, port: int = 8765, open_browser: bool = True) -> None:
     server = UiServer(("127.0.0.1", port), root)
     url = f"http://127.0.0.1:{port}/"
-    print(f"fleet ui: {url}  (корень {root}; остановить — Ctrl+C)", flush=True)
+    print(T(f"fleet ui: {url}  (корінь {root}; зупинити — Ctrl+C)", f"fleet ui: {url}  (root {root}; stop with Ctrl+C)"), flush=True)
     if open_browser:
         threading.Timer(0.5, webbrowser.open, (url,)).start()
     try:

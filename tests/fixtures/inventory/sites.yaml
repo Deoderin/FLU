@@ -1,0 +1,43 @@
+# Тестовий інвентар: по майданчику на кожен сценарій. Лише для pytest.
+service:
+  host: ops.example.com
+  ssh_user: root
+  endpoint: ops.example.com:51900
+  network: 10.99.0.0/16
+  engineers:
+    - {name: engineer1, id: 1}
+
+sites:
+  flu-acme:
+    kind: managed
+    customer: ACME
+    host: vps1.example.com
+    ssh_user: root
+    endpoint: acme.vpn.example.com:51821
+    network:
+      tunnel: 10.150.0.0/24
+      operators: 10.150.1.0/24
+      robot_lans: 10.150.16.0/20
+
+  globex:
+    kind: managed
+    customer: Globex
+    host: robots.globex.example.com
+    ssh_user: root
+    endpoint: robots.globex.example.com:51820
+    network:
+      tunnel: 10.160.0.0/24
+      operators: 10.160.1.0/24
+      robot_lans: 10.160.16.0/20
+
+  initech:
+    kind: external
+    customer: Initech
+    vpn: wireguard
+    endpoint: vpn.initech.example.com:51820
+    server_pubkey: "dGVzdC1rZXktcmVwbGFjZS13aXRoLWN1c3RvbWVycyE="
+    server_ip: 172.20.5.1
+    allowed_sources: [172.20.5.1]
+    network:
+      tunnel: 172.20.5.0/26
+      robot_lans: 172.20.5.64/26

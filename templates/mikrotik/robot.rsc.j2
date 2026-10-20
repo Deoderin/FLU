@@ -1,7 +1,7 @@
-{#- Полный конфиг MikroTik робота. Применяется на чистое устройство:
-    netinstall (Configure script / netinstall-cli -s) или
+{#- Повний конфіг MikroTik НРК. Застосовується на чистий пристрій:
+    netinstall (Configure script / netinstall-cli -r -s) або
     /system reset-configuration no-defaults=yes run-after-reset=<файл>.
-    Весь вывод — только ASCII. -#}
+    Увесь вивід — лише ASCII. -#}
 {% from "mikrotik/_site.rsc.j2" import site_block %}
 # fleet: {{ robot.name }} (id {{ robot.id }}), site {{ site.name }}, slot {{ slot }}
 # fingerprint {{ fingerprint }}
@@ -17,7 +17,7 @@
 /system identity set name="{{ robot.name }}"
 /user set [find name=admin] password="{{ mikrotik_password }}"
 
-# --- Robot LAN: identical on every robot ---
+# --- UGV LAN: identical on every UGV ---
 /interface bridge add name=br-lan comment="fleet"
 /interface bridge port
 add bridge=br-lan interface={{ platform.ports.fc }} comment="fleet: fc"
@@ -56,7 +56,7 @@ add chain=input action=accept connection-state=established,related,untracked com
 add chain=input action=drop connection-state=invalid comment="fleet"
 add chain=input action=accept protocol=icmp comment="fleet"
 add chain=input action=accept in-interface-list=fleet-lan comment="fleet: bench and LAN"
-add chain=input action=accept in-interface-list=fleet-sites src-address-list=fleet-mgmt protocol=tcp dst-port=22 comment="fleet: ssh from site server"
+add chain=input action=accept in-interface-list=fleet-sites src-address-list=fleet-mgmt protocol=tcp dst-port=22 comment="fleet: ssh via site tunnel"
 {% if svc %}
 add chain=input action=accept in-interface={{ svc.iface }} protocol=tcp dst-port=22,8291 comment="fleet: service tunnel"
 {% endif %}

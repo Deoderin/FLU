@@ -1,29 +1,16 @@
-# Операторы managed-площадок.
-#   id    — адрес оператора в сети operators площадки (1..254)
-#   role  — operator: управляет своими роботами и передаёт их;
-#           dispatcher: дополнительно может принудительно забрать робота
-#   sites — к каким площадкам у оператора есть доступ
+# Пілоти (оператори) managed-майданчиків.
+#   id    — адреса пілота в мережі operators майданчика (1..254)
+#   role  — operator: керує своїми НРК і передає їх;
+#           dispatcher: додатково може примусово забрати НРК
+#   sites — до яких майданчиків пілот має доступ
 #
-# Оператор определяется арбитром по адресу в туннеле WireGuard,
-# поэтому у каждого оператора свой ключ (fleet render выдаёт ему конфиг).
+# Пілота цього ноутбука додає майстер першого налаштування (fleet setup).
+# Арбітр визначає пілота за адресою в тунелі WireGuard, тому в кожного
+# свій ключ (fleet render видає конфіг у build/sites/<майданчик>/operators/).
+#
+# Приклад:
+#   - name: operator1
+#     id: 11
+#     role: operator
+#     sites: [main]
 operators:
-  - name: dispatcher-acme
-    id: 2
-    role: dispatcher
-    sites: [flu-acme]
-
-  - name: ivanov
-    id: 10
-    role: operator
-    sites: [flu-acme]
-
-  - name: petrov
-    id: 11
-    role: operator
-    sites: [flu-acme, globex]
-
-  # Инженерная станция: с неё запускается приёмочный тест (fleet test)
-  - name: test-bench
-    id: 250
-    role: dispatcher
-    sites: [flu-acme, globex]

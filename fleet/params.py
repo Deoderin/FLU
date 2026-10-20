@@ -1,15 +1,17 @@
-"""Файлы параметров ArduPilot: чтение, фильтр калибровок, сравнение."""
+"""Файли параметрів ArduPilot: читання, фільтр калібрувань, порівняння."""
 from __future__ import annotations
 
 import fnmatch
 import re
 from pathlib import Path
 
+from .i18n import T
+
 TOKEN_SPLIT = re.compile(r"[,\s]+")
 
 
 def parse_parm(text: str) -> dict[str, float]:
-    """Формат Mission Planner (NAME,VALUE) и QGC (sysid compid NAME VALUE type)."""
+    """Формат Mission Planner (NAME,VALUE) і QGC (sysid compid NAME VALUE type)."""
     params: dict[str, float] = {}
     for lineno, raw in enumerate(text.splitlines(), 1):
         line = raw.split("#", 1)[0].strip()
@@ -21,7 +23,7 @@ def parse_parm(text: str) -> dict[str, float]:
         elif len(tokens) >= 2:
             name, value = tokens[0], tokens[1]
         else:
-            raise ValueError(f"строка {lineno}: не похоже на параметр: {raw!r}")
+            raise ValueError(T(f"рядок {lineno}: не схоже на параметр: {raw!r}", f"line {lineno}: not a parameter: {raw!r}"))
         params[name] = float(value)
     return params
 
@@ -47,19 +49,19 @@ def ignored(name: str, patterns: list[str]) -> bool:
 
 
 def expected_params(base: dict[str, float], overrides: dict[str, float], patterns: list[str]) -> dict[str, float]:
-    """Эталон для конкретного робота: база без калибровок + параметры fleet."""
+    """Еталон для конкретного НРК: база без калібрувань + параметри fleet."""
     merged = {k: v for k, v in base.items() if not ignored(k, patterns)}
     merged.update(overrides)
     return merged
 
 
 def close(a: float, b: float, tol: float = 1e-4) -> bool:
-    # ArduPilot хранит float32: 0.1 возвращается как 0.100000001
+    # ArduPilot зберігає float32: 0.1 повертається як 0.100000001
     return abs(a - b) <= tol * max(1.0, abs(a), abs(b))
 
 
 def diff(expected: dict[str, float], actual: dict[str, float]) -> list[tuple[str, float, float | None]]:
-    """Параметры, которые отличаются от эталона или отсутствуют в прошивке."""
+    """Параметри, що відрізняються від еталона або відсутні в прошивці."""
     out = []
     for name, exp in sorted(expected.items()):
         act = actual.get(name)

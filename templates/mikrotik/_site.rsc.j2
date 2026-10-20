@@ -1,14 +1,17 @@
-{#- Блок площадки на MikroTik: туннель, адрес, netmap и списки доступа.
-    Все объекты помечены comment=tag, поэтому площадку можно целиком удалить
-    или «подтвердить» (переезд: tag "fleet-site:X pending" -> "fleet-site:X").
-    Правила файрвола ссылаются на списки fleet-sites / fleet-sources / fleet-mgmt,
-    поэтому при добавлении площадки их порядок трогать не нужно.
-    Весь вывод — только ASCII: RouterOS плохо переносит UTF-8. -#}
+{#- Блок майданчика на MikroTik: тунель, адреса, netmap і списки доступу.
+    Усі об'єкти позначені comment=tag, тому майданчик можна цілком видалити
+    або «підтвердити» (переїзд: tag "fleet-site:X pending" -> "fleet-site:X").
+    Правила файрвола посилаються на списки fleet-sites / fleet-sources / fleet-mgmt,
+    тож під час додавання майданчика їхній порядок чіпати не треба.
+    Увесь вивід — лише ASCII: RouterOS погано переносить UTF-8. -#}
 
 {% macro site_block(s) -%}
 /interface wireguard add name={{ s.iface }} listen-port={{ s.listen_port }} mtu={{ s.mtu }} private-key="{{ s.private_key }}" comment="{{ s.tag }}"
-/interface wireguard peers add interface={{ s.iface }} public-key="{{ s.server_pubkey }}" endpoint-address={{ s.endpoint_host }} endpoint-port={{ s.endpoint_port }} allowed-address={{ s.tunnel_net }} persistent-keepalive=25s comment="{{ s.tag }}"
+/interface wireguard peers add interface={{ s.iface }} public-key="{{ s.server_pubkey }}" endpoint-address={{ s.endpoint_host }} endpoint-port={{ s.endpoint_port }} allowed-address={{ s.allowed }} persistent-keepalive=25s comment="{{ s.tag }}"
 /ip address add address={{ s.robot_ip }}/{{ s.prefix }} interface={{ s.iface }} comment="{{ s.tag }}"
+{% for net in s.routes %}
+/ip route add dst-address={{ net }} gateway={{ s.iface }} comment="{{ s.tag }}"
+{% endfor %}
 /interface list member add list=fleet-sites interface={{ s.iface }} comment="{{ s.tag }}"
 /ip firewall nat add chain=dstnat in-interface={{ s.iface }} dst-address={{ s.lan_block }} action=netmap to-addresses={{ s.lan_mapped }} comment="{{ s.tag }}"
 {% for src in s.sources %}
@@ -23,6 +26,7 @@
 /ip firewall nat remove [find comment="{{ tag }}"]
 /ip firewall address-list remove [find comment="{{ tag }}"]
 /interface list member remove [find comment="{{ tag }}"]
+/ip route remove [find comment="{{ tag }}"]
 /ip address remove [find comment="{{ tag }}"]
 /interface wireguard peers remove [find comment="{{ tag }}"]
 /interface wireguard remove [find comment="{{ tag }}"]
@@ -32,6 +36,7 @@
 /interface wireguard set [find comment="{{ old }}"] comment="{{ new }}"
 /interface wireguard peers set [find comment="{{ old }}"] comment="{{ new }}"
 /ip address set [find comment="{{ old }}"] comment="{{ new }}"
+/ip route set [find comment="{{ old }}"] comment="{{ new }}"
 /interface list member set [find comment="{{ old }}"] comment="{{ new }}"
 /ip firewall nat set [find comment="{{ old }}"] comment="{{ new }}"
 /ip firewall address-list set [find comment="{{ old }}"] comment="{{ new }}"

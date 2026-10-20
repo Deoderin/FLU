@@ -1,0 +1,89 @@
+"""Перевірка кабелю до роутера: чи отримав ноутбук адресу від скинутого MikroTik.
+
+Скинутий роутер роздає адреси 192.168.88.x (сам він — 192.168.88.1). Якщо такої адреси
+на Ethernet немає, прошивка не дістанеться до роутера — краще сказати це одразу й людською мовою.
+"""
+from __future__ import annotations
+
+import ipaddress
+import json
+import os
+import subprocess
+
+from .i18n import T
+
+ROUTER_NET = ipaddress.ip_network("192.168.88.0/24")
+
+# Фізичні дротові адаптери (тип 802.3), їхній стан, DHCP і адреси IPv4
+PS_ADAPTERS = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+@(Get-NetAdapter -Physical | Where-Object { $_.PhysicalMediaType -eq '802.3' } | ForEach-Object {
+  $if = Get-NetIPInterface -InterfaceIndex $_.ifIndex -AddressFamily IPv4
+  $ip = Get-NetIPAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4
+  [pscustomobject]@{ name = $_.Name; up = ($_.Status -eq 'Up'); dhcp = ($if.Dhcp -eq 'Enabled');
+                     ips = @($ip | ForEach-Object { $_.IPAddress }) }
+}) | ConvertTo-Json -Compress -Depth 3
+"""
+
+
+def wired_adapters() -> list[dict] | None:
+    """Дротові адаптери ноутбука. None — визначити не вдалося (не Windows або помилка)."""
+    if os.name != "nt":
+        return None
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", PS_ADAPTERS],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+        data = json.loads(r.stdout or "[]")
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None
+    if isinstance(data, dict):  # один адаптер PowerShell повертає не списком
+        data = [data]
+    for a in data:
+        ips = a.get("ips") or []
+        a["ips"] = [ips] if isinstance(ips, str) else list(ips)
+    return data
+
+
+def check_router_link(adapters: list[dict] | None = None) -> dict:
+    """status: ok | no_adapter | no_cable | waiting | static | unknown, плюс зрозуміле повідомлення."""
+    if adapters is None:
+        adapters = wired_adapters()
+    if adapters is None:
+        from .mndp import local_addresses
+
+        mine = [ip for ip in local_addresses() if ipaddress.ip_address(ip) in ROUTER_NET]
+        if mine:
+            return {"status": "ok", "ip": mine[0], "message": T(f"ноутбук у мережі роутера: {mine[0]}",
+                                                               f"the laptop is in the router network: {mine[0]}")}
+        return {"status": "unknown", "message": T("не вдалося перевірити мережевий порт ноутбука",
+                                                  "could not check the laptop network port")}
+
+    if not adapters:
+        return {"status": "no_adapter", "message": T(
+            "у ноутбука немає порту Ethernet. Під'єднайте USB-Ethernet перехідник і кабель від роутера",
+            "the laptop has no Ethernet port. Plug in a USB-Ethernet adapter and the cable from the router")}
+    up = [a for a in adapters if a["up"]]
+    if not up:
+        return {"status": "no_cable", "message": T(
+            "кабель не під'єднано або роутер вимкнено: увімкніть роутер і вставте кабель у порт 2, 3, 4 або 5",
+            "no cable or the router is off: power on the router and plug the cable into port 2, 3, 4 or 5")}
+    for a in up:
+        for ip in a["ips"]:
+            if ipaddress.ip_address(ip) in ROUTER_NET:
+                return {"status": "ok", "ip": ip, "adapter": a["name"], "message": T(
+                    f"кабель під'єднано, роутер видав ноутбуку адресу {ip} ✓",
+                    f"the cable is connected, the router gave the laptop address {ip} ✓")}
+    static = [a for a in up if not a["dhcp"]]
+    if static and not any(a["dhcp"] for a in up):
+        a = static[0]
+        listed = ", ".join(a["ips"]) or T("немає", "none")
+        return {"status": "static", "adapter": a["name"], "message": T(
+            f"на порту «{a['name']}» адреси задано вручну ({listed}). Роутер роздає адресу сам: у налаштуваннях "
+            f"мережі для «{a['name']}» увімкніть «Отримувати IP-адресу автоматично» або додайте адресу 192.168.88.250",
+            f"addresses on port \"{a['name']}\" are set manually ({listed}). The router assigns an address itself: in the "
+            f"network settings of \"{a['name']}\" turn on \"Obtain an IP address automatically\" or add address 192.168.88.250")}
+    return {"status": "waiting", "message": T(
+        "кабель під'єднано, але роутер ще не видав адресу. Зачекайте 30 секунд після ввімкнення роутера. "
+        "Якщо не допоможе — роутер не скинуто до заводських налаштувань або кабель у порту 1",
+        "the cable is connected but the router has not given an address yet. Wait 30 seconds after the router "
+        "powers on. If that does not help, the router is not reset to factory settings or the cable is in port 1")}

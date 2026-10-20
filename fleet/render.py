@@ -1,10 +1,10 @@
-"""Сборка конфигов из inventory, секретов и шаблонов в build/.
+"""Збирання конфігів з inventory, секретів і шаблонів у build/.
 
-build/robots/<robot>/        robot.rsc, robot.parm, expected.parm, move-*.rsc
-build/sites/<site>/server/   бандл стека площадки для deploy-server
-build/sites/<site>/operators/ конфиги WireGuard операторов и памятка с адресами
-build/sites/<site>/kit/      интеграционный пакет external-площадки
-build/service/               сервисный туннель: сервер и конфиги инженеров
+build/robots/<нрк>/           robot.rsc, robot.parm, expected.parm, move-*.rsc
+build/sites/<майданчик>/server/    бандл стеку майданчика для deploy-server
+build/sites/<майданчик>/operators/ конфіги WireGuard операторів і пам'ятка з адресами
+build/sites/<майданчик>/kit/       файли підключення для сервера замовника (external)
+build/service/                сервісний тунель: сервер і конфіги інженерів
 """
 from __future__ import annotations
 
@@ -18,13 +18,14 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from ruamel.yaml import YAML
 
 from . import addressing as A
+from .i18n import T, get_lang
 from .inventory import Inventory, Robot, Site
 from .keystore import SecretError, SecretStore, wg_pubkey
 from .params import expected_params, format_parm, load_ignore, parse_parm, read_parm
 
-MTU = 1380  # у LTE MTU меньше стандартного: без запаса фрагментация портит видео
+MTU = 1380  # у LTE MTU менший за стандартний: без запасу фрагментація псує відео
 MEDIAMTX_VERSION = "1.21.1"
-SVC_LISTEN_PORT = 13230  # порт WireGuard сервисного туннеля на MikroTik
+SVC_LISTEN_PORT = 13230  # порт WireGuard сервісного тунелю на MikroTik
 ARBITER_FILES = ("Dockerfile", "requirements.txt", "arbiter.py", "policy.py", "panel.html")
 FP_PLACEHOLDER = "@FINGERPRINT@"
 
@@ -35,16 +36,17 @@ class RenderError(Exception):
 
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as f:  # LF: для bash и RouterOS
+    with path.open("w", encoding="utf-8", newline="\n") as f:  # LF: для bash і RouterOS
         f.write(text)
     return path
 
 
 def ensure_ascii(text: str, what: str) -> None:
-    """RouterOS плохо переносит UTF-8 в конфиге: ловим это при сборке, а не на роботе."""
+    """RouterOS погано переносить UTF-8 у конфігу: ловимо це під час збирання, а не на НРК."""
     for lineno, line in enumerate(text.splitlines(), 1):
         if not line.isascii():
-            raise RenderError(f"{what}, строка {lineno}: в конфиге MikroTik допустим только ASCII: {line!r}")
+            raise RenderError(T(f"{what}, рядок {lineno}: у конфігу MikroTik допустимий лише ASCII: {line!r}",
+                                f"{what}, line {lineno}: only ASCII is allowed in a MikroTik config: {line!r}"))
 
 
 def dump_yaml(data: dict) -> str:
@@ -78,9 +80,14 @@ class Renderer:
         return self.build / "sites" / site.name
 
     def server_pubkey(self, site: Site) -> str:
-        return wg_pubkey(self.store.site(site.name)["wg"]) if site.managed else site.server_pubkey
+        if site.managed:
+            return wg_pubkey(self.store.site(site.name)["wg"])
+        if not site.server_pubkey:
+            raise RenderError(T(f"ключ сервера майданчика {site.name} ще невідомий: вставте відповідь сервера",
+                                f"the server key of site {site.name} is not known yet: paste the server response"))
+        return site.server_pubkey
 
-    # --- робот ---------------------------------------------------------------
+    # --- НРК -----------------------------------------------------------------
 
     @staticmethod
     def lan_ctx() -> dict:
@@ -98,13 +105,14 @@ class Renderer:
             "server_pubkey": self.server_pubkey(site),
             "endpoint_host": site.endpoint.host,
             "endpoint_port": site.endpoint.port,
-            "tunnel_net": str(site.network.tunnel),
+            "allowed": ",".join(site.peer_allowed()),
+            "routes": site.robot_routes(),
             "robot_ip": str(A.robot_tunnel_ip(site, slot)),
             "prefix": site.network.tunnel.prefixlen,
             "lan_block": str(A.lan_block(site, slot)),
             "lan_mapped": str(A.LAN_MAPPED),
-            "sources": [str(ip) for ip in site.sources()],
-            "mgmt": [str(A.server_ip(site))] if site.managed else [],
+            "sources": site.sources(),
+            "mgmt": site.mgmt_sources(),
         }
 
     def svc_ctx(self, robot: Robot) -> dict | None:
@@ -132,7 +140,7 @@ class Renderer:
         return text, fp
 
     def robot_rsc(self, robot: Robot, site: Site, slot: int) -> tuple[str, str]:
-        """Полный конфиг MikroTik и его отпечаток (по нему тест ловит устаревший конфиг)."""
+        """Повний конфіг MikroTik і його відбиток (за ним тест ловить застарілий конфіг)."""
         plat = self.inv.platform(robot)
         ctx = {
             "robot": robot,
@@ -160,7 +168,7 @@ class Renderer:
         return text, parse_parm(text)
 
     def expected_params(self, robot: Robot) -> dict[str, float]:
-        """Эталон параметров робота: база платформы без калибровок + параметры fleet."""
+        """Еталон параметрів НРК: база платформи без калібрувань + параметри fleet."""
         base_name = self.inv.platform(robot)["fc"].get("base_params", "ardupilot-base.parm")
         base = read_parm(self.inv.root / "base" / base_name)
         patterns = load_ignore(self.inv.root / "base" / "ardupilot-ignore.txt")
@@ -169,7 +177,8 @@ class Renderer:
 
     def render_robot(self, robot: Robot) -> list[Path]:
         if not robot.provisioned:
-            raise RenderError(f"{robot.name} ещё не прошит: fleet provision --id {robot.id}")
+            raise RenderError(T(f"{robot.name} ще не зареєстровано: fleet provision --id {robot.id}",
+                                f"{robot.name} is not registered yet: fleet provision --id {robot.id}"))
         site = self.inv.site(robot.site)
         rsc, _ = self.robot_rsc(robot, site, robot.slot)
         parm, _ = self.robot_params(robot, site.name, robot.slot)
@@ -181,7 +190,7 @@ class Renderer:
         return [write(out / "robot.rsc", rsc), write(out / "robot.parm", parm), write(out / "expected.parm", expected)]
 
     def render_move(self, robot: Robot, new_site: Site, new_slot: int, rollback_min: int) -> tuple[Path, Path]:
-        """Скрипты переезда: добавить новую площадку (с автооткатом) и подтвердить переезд."""
+        """Скрипти переїзду: додати новий майданчик (з автовідкатом) і підтвердити переїзд."""
         new = self.site_ctx(robot, new_site, new_slot, pending=True)
         add = self.tpl("mikrotik/move-add.rsc.j2", robot=robot, old_site=robot.site, new=new, rollback_min=rollback_min)
         _, fp = self.robot_rsc(robot, new_site, new_slot)
@@ -200,7 +209,7 @@ class Renderer:
         out = self.robot_dir(robot)
         return write(out / f"move-{new_site.name}-add.rsc", add), write(out / f"move-{new_site.name}-commit.rsc", commit)
 
-    # --- площадка ------------------------------------------------------------
+    # --- майданчик -----------------------------------------------------------
 
     def _robot_rows(self, site: Site) -> list[dict]:
         rows = []
@@ -228,7 +237,8 @@ class Renderer:
 
     def render_site(self, site: Site) -> list[Path]:
         if not site.managed:
-            raise RenderError(f"площадка {site.name} — external: для неё fleet kit")
+            raise RenderError(T(f"майданчик {site.name} — external: для нього fleet kit",
+                                f"site {site.name} is external: use fleet kit"))
         sip = str(A.server_ip(site))
         robots = self._robot_rows(site)
         out = self.site_dir(site)
@@ -307,14 +317,18 @@ class Renderer:
     def _operators_memo(self, site: Site, robots: list[dict]) -> str:
         sip = A.server_ip(site)
         lines = [
-            f"# Площадка {site.name}: подключение операторов",
+            T(f"# Майданчик {site.name}: підключення операторів", f"# Site {site.name}: operator access"),
             "",
-            "1. Импортируйте свой конфиг из этой папки в WireGuard и включите туннель.",
-            f"2. Панель управления (кто владеет роботом, передача): http://{sip}:{A.PANEL_PORT}",
-            "3. В QGroundControl / Mission Planner добавьте TCP-подключение к нужному роботу.",
-            "   MAVLink system ID наземной станции оставьте 255 (по умолчанию).",
+            T("1. Імпортуйте свій конфіг із цієї теки у WireGuard і ввімкніть тунель.",
+              "1. Import your config from this folder into WireGuard and enable the tunnel."),
+            T(f"2. Панель керування (хто володіє НРК, передача): http://{sip}:{A.PANEL_PORT}",
+              f"2. Control panel (who owns which UGV, handover): http://{sip}:{A.PANEL_PORT}"),
+            T("3. У QGroundControl / Mission Planner додайте TCP-підключення до потрібного НРК.",
+              "3. In QGroundControl / Mission Planner add a TCP link to the UGV you need."),
+            T("   MAVLink system ID наземної станції лишіть 255 (за замовчуванням).",
+              "   Keep the ground station MAVLink system ID at 255 (the default)."),
             "",
-            "| Робот | MAVLink (TCP) | Камера 1 | Камера 2 |",
+            T("| НРК | MAVLink (TCP) | Камера 1 | Камера 2 |", "| UGV | MAVLink (TCP) | Camera 1 | Camera 2 |"),
             "|---|---|---|---|",
         ]
         for r in robots:
@@ -326,25 +340,25 @@ class Renderer:
         return "\n".join(lines) + "\n"
 
     def render_kit(self, site: Site) -> list[Path]:
-        """Интеграционный пакет для администратора сервера заказчика (external)."""
+        """Файли підключення для адміністратора сервера замовника (external)."""
         robots = self._robot_rows(site)
         out = self.site_dir(site) / "kit"
-        plat_failsafe = {self.inv.platform(r["robot"])["failsafe"]["gcs_timeout_s"] for r in robots} or {5}
+        failsafe = {self.inv.platform(r["robot"])["failsafe"]["gcs_timeout_s"] for r in robots} or {5}
         readme = self.tpl(
-            "integration/README.md.j2",
+            f"integration/README.{get_lang()}.md.j2",
             site=site,
             server_ip=str(A.server_ip(site)),
             robots=robots,
             mtu=MTU,
-            failsafe_s=max(plat_failsafe),
+            failsafe_s=max(failsafe),
         )
-        peers = [f"# fleet: robots of site {site.name} - add to the WireGuard server config"]
+        peers = [f"# fleet: UGVs of site {site.name} - add to the WireGuard server config"]
         for r in robots:
-            peers += ["", f"# robot {r['name']} (id {r['id']})", "[Peer]",
+            peers += ["", f"# UGV {r['name']} (id {r['id']})", "[Peer]",
                       f"PublicKey = {r['public_key']}", f"AllowedIPs = {r['tunnel_ip']}/32, {r['lan_block']}"]
         creds = io.StringIO()
         w = csv.writer(creds, lineterminator="\n")
-        w.writerow(["robot", "camera", "rtsp_url", "user", "password"])
+        w.writerow(["ugv", "camera", "rtsp_url", "user", "password"])
         for r in robots:
             for cam in A.CAMERAS:
                 w.writerow([r["name"], cam, f"rtsp://{r[cam + '_ip']}:554{r['rtsp_path']}", r["rtsp_user"], r["camera_password"]])
@@ -354,12 +368,44 @@ class Renderer:
             write(out / "credentials.csv", creds.getvalue()),
         ]
 
-    # --- сервисный туннель ---------------------------------------------------
+    def render_pilots(self, site: Site) -> list[Path]:
+        """hub: конфіги WireGuard пілотів. Пілот бачить сервер і мережі НРК (сервер пересилає трафік)."""
+        if not site.server_pubkey:
+            return []  # відповіді сервера ще не було
+        sip = A.server_ip(site)
+        out = self.site_dir(site) / "operators"
+        paths = []
+        for o in self.inv.operators_on(site.name):
+            paths.append(write(out / f"{o.name}.conf", self.tpl(
+                "server/client.conf.j2",
+                title=f"pilot {o.name}, site {site.name}",
+                private_key=self.store.operator(o.name)["wg"],
+                address=str(A.operator_ip(site, o)),
+                mtu=MTU,
+                server_pubkey=site.server_pubkey,
+                endpoint=str(site.endpoint),
+                allowed=f"{sip}/32, {site.network.robot_lans}",
+            )))
+        return paths
+
+    def qgc_address(self, robot: Robot) -> str | None:
+        """Куди підключати QGroundControl: hub — напряму до ФК НРК, managed — через арбітр."""
+        if not robot.provisioned:
+            return None
+        site = self.inv.site(robot.site)
+        if site.hub:
+            return f"{A.mapped_ip(site, robot.slot, 'fc')}:{self.inv.platform(robot)['fc']['mavlink_port']}"
+        if site.managed:
+            return f"{A.server_ip(site)}:{A.arbiter_port(robot.slot)}"
+        return None
+
+    # --- сервісний тунель ----------------------------------------------------
 
     def render_service(self) -> list[Path]:
         svc = self.inv.service
         if svc is None:
-            raise RenderError("раздел service в inventory/sites.yaml не задан")
+            raise RenderError(T("розділ service в inventory/sites.yaml не задано",
+                                "the service section is missing in inventory/sites.yaml"))
         sip = str(A.service_server_ip(svc))
         server_pub = wg_pubkey(self.store.service()["wg"])
         out = self.build / "service"
@@ -388,7 +434,7 @@ class Renderer:
             try:
                 key = self.store.robot(r.id)["wg_svc"]
             except SecretError:
-                continue  # ещё не прошит
+                continue  # ще не зареєстровано
             robots.append({"name": r.name, "id": r.id, "ip": str(A.service_robot_ip(svc, r.id)), "public_key": wg_pubkey(key)})
 
         paths.append(write(out / "server" / f"{svc.iface}.conf", self.tpl(
@@ -406,7 +452,7 @@ class Renderer:
             "server/install.sh.j2", title="service tunnel hub", iface=svc.iface, with_stack=False)))
         return paths
 
-    # --- всё сразу -----------------------------------------------------------
+    # --- усе разом -----------------------------------------------------------
 
     def render_all(self) -> tuple[list[Path], list[str]]:
         paths: list[Path] = []
@@ -415,17 +461,22 @@ class Renderer:
             if r.provisioned:
                 paths += self.render_robot(r)
             else:
-                notes.append(f"{r.name}: ещё не прошит (fleet provision --id {r.id})")
+                notes.append(T(f"{r.name}: ще не зареєстровано (fleet provision --id {r.id})",
+                               f"{r.name}: not registered yet (fleet provision --id {r.id})"))
         for s in self.inv.sites.values():
-            if not s.managed:
+            if s.hub:
+                paths += self.render_pilots(s)
+            elif not s.managed:
                 paths += self.render_kit(s)
             elif self.store.has_site(s.name):
                 paths += self.render_site(s)
             else:
-                notes.append(f"площадка {s.name}: сервер ещё не развёрнут (fleet deploy-server --site {s.name})")
+                notes.append(T(f"майданчик {s.name}: сервер ще не розгорнуто (fleet deploy-server --site {s.name})",
+                               f"site {s.name}: server not deployed yet (fleet deploy-server --site {s.name})"))
         if self.inv.service:
             if self.store.has_service():
                 paths += self.render_service()
             else:
-                notes.append("сервисный туннель: сервер ещё не развёрнут (fleet deploy-server --service)")
+                notes.append(T("сервісний тунель: сервер ще не розгорнуто (fleet deploy-server --service)",
+                               "service tunnel: server not deployed yet (fleet deploy-server --service)"))
         return paths, notes

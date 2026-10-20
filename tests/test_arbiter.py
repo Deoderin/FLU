@@ -1,4 +1,4 @@
-"""Арбитр: правила пропуска сообщений и живой прогон с фейковым роботом и тремя операторами."""
+"""Арбітр: правила пропуску повідомлень і живий прогін із фейковим НРК і трьома операторами."""
 import asyncio
 import json
 
@@ -43,7 +43,7 @@ def test_policy_classification():
     assert classify(m.param_set_encode(7, 1, b"FS_ACTION", 0, 9), HOLD) == "control"
     assert classify(arm(m), HOLD) == "control"
     assert classify(set_mode(m, HOLD), HOLD) == "stop"
-    assert classify(set_mode(m, 10), HOLD) == "control"  # AUTO — это не стоп
+    assert classify(set_mode(m, 10), HOLD) == "control"  # AUTO — це не стоп
     assert classify(m.set_mode_encode(7, 1, HOLD), HOLD) == "stop"
     assert classify(ftp(m, 5), HOLD) == "read"  # ReadFile
     assert classify(ftp(m, 7), HOLD) == "control"  # WriteFile
@@ -53,16 +53,16 @@ def test_non_owner_rights():
     m, p = gcs(), Policy()
     assert allowed(arm(m), True, p, HOLD)
     assert not allowed(arm(m), False, p, HOLD)
-    assert not allowed(heartbeat(m), False, p, HOLD)  # иначе failsafe не заметит пропажу владельца
+    assert not allowed(heartbeat(m), False, p, HOLD)  # інакше failsafe не помітить, що власник зник
     assert allowed(m.param_request_list_encode(7, 1), False, p, HOLD)
     assert allowed(set_mode(m, HOLD), False, p, HOLD)
     assert not allowed(set_mode(m, HOLD), False, Policy(stop_from_any=False), HOLD)
 
 
-# --- живой прогон --------------------------------------------------------------
+# --- живий прогін ----------------------------------------------------------------
 
 class FakeRobot:
-    """TCP-сервер вместо адаптера ФК: шлёт heartbeat SYSID 7 и запоминает, что получил."""
+    """TCP-сервер замість адаптера ФК: шле heartbeat SYSID 7 і запам'ятовує, що отримав."""
 
     def __init__(self):
         self.received: list = []
@@ -93,7 +93,7 @@ class FakeRobot:
 
 
 class Station:
-    """Наземная станция с заданным адресом источника (оператор определяется по IP)."""
+    """Наземна станція із заданою адресою джерела (оператор визначається за IP)."""
 
     def __init__(self, ip: str):
         self.ip = ip
@@ -155,20 +155,20 @@ async def scenario(tmp_path):
     await stranger.connect(listen)
     await settle(0.6)
 
-    # телеметрия робота доходит до всех операторов, чужой адрес отключён
+    # телеметрія НРК доходить до всіх операторів, чужу адресу відключено
     assert link.robot_writer is not None and link.robot_sysid == 7
     assert any(m.get_type() == "HEARTBEAT" for m in a.received)
     assert any(m.get_type() == "HEARTBEAT" for m in b.received)
     assert not stranger.received
 
-    # пока владельца нет: чтение проходит, heartbeat и управление — нет
+    # поки власника немає: читання проходить, heartbeat і керування — ні
     a.send(heartbeat(a.mav))
     a.send(arm(a.mav))
     a.send(a.mav.param_request_list_encode(7, 1))
     await settle()
     assert robot.types() == ["PARAM_REQUEST_LIST"]
 
-    # a берёт робота: теперь его heartbeat и команды проходят, а b — нет
+    # a бере НРК: тепер його heartbeat і команди проходять, а b — ні
     assert arb.act(ops["a"], "r1", "claim", {})[0] == 200
     assert arb.act(ops["b"], "r1", "claim", {})[0] == 409
     robot.received.clear()
@@ -179,15 +179,15 @@ async def scenario(tmp_path):
     await settle()
     assert robot.types() == ["HEARTBEAT", "COMMAND_LONG"]
 
-    # «стоп» может нажать любой оператор площадки
+    # «стоп» може натиснути будь-який оператор майданчика
     robot.received.clear()
     b.send(set_mode(b.mav, HOLD))
     await settle()
     assert robot.types() == ["COMMAND_LONG"] and robot.received[0].param2 == HOLD
 
-    # передача a -> b: арбитр сам ставит Hold, b принимает
+    # передача a -> b: арбітр сам ставить Hold, b приймає
     robot.received.clear()
-    assert arb.act(ops["b"], "r1", "accept", {})[0] == 409  # ещё не предлагали
+    assert arb.act(ops["b"], "r1", "accept", {})[0] == 409  # ще не пропонували
     assert arb.act(ops["a"], "r1", "handover", {"to": "b"})[0] == 200
     await settle()
     hold = [m for m in robot.received if m.get_type() == "COMMAND_LONG"]
@@ -199,20 +199,22 @@ async def scenario(tmp_path):
     a.send(heartbeat(a.mav))
     b.send(heartbeat(b.mav))
     await settle()
-    assert len(robot.received) == 1  # только heartbeat нового владельца
+    assert len(robot.received) == 1  # лише heartbeat нового власника
 
-    # оператор не может забрать робота силой, диспетчер — может
-    assert arb.act(ops["a"], "r1", "takeover", {})[0] == 403
+    # оператор не може забрати НРК силоміць, диспетчер — може; відповіді — мовою запиту
+    code, message = arb.act(ops["a"], "r1", "takeover", {}, lang="en")
+    assert code == 403 and message == "only a dispatcher can take over a UGV"
+    assert arb.act(ops["a"], "r1", "takeover", {})[1] == "примусово забрати НРК може лише диспетчер"
     assert arb.act(ops["d"], "r1", "takeover", {})[0] == 200
     assert arb.journal.owner("r1") == "d"
 
     events = [json.loads(line)["event"] for line in (tmp_path / "state" / "audit.jsonl").read_text("utf-8").splitlines()]
     for event in ("claim", "hold", "handover_offer", "handover", "takeover"):
         assert event in events
-    # владелец переживает перезапуск арбитра
+    # власник переживає перезапуск арбітра
     assert json.loads((tmp_path / "state" / "owners.json").read_text("utf-8")) == {"r1": "d"}
 
-    # конфиг перечитывается на лету: оператора b убрали — его соединение закрыто
+    # конфіг перечитується на льоту: оператора b прибрали — його з'єднання закрито
     cfg = json.loads(config.read_text("utf-8"))
     cfg["operators"] = [o for o in cfg["operators"] if o["name"] != "b"]
     config.write_text(json.dumps(cfg), "utf-8")
@@ -238,7 +240,7 @@ def loopback_alias_available() -> bool:
         return False
 
 
-@pytest.mark.skipif(not loopback_alias_available(), reason="нет адресов 127.0.0.x кроме 127.0.0.1")
+@pytest.mark.skipif(not loopback_alias_available(), reason="немає адрес 127.0.0.x, крім 127.0.0.1")
 def test_arbiter_end_to_end(tmp_path):
     asyncio.run(asyncio.wait_for(scenario(tmp_path), timeout=30))
 
@@ -259,7 +261,7 @@ def test_http_api(tmp_path):
             state = await (await client.get("/api/state")).json()
             assert state["me"]["name"] == "a" and state["robots"][0]["name"] == "r1"
             r = await client.post("/api/robots/r1/claim")
-            assert r.status == 403  # без X-Fleet: защита от запросов с чужих страниц
+            assert r.status == 403  # без X-Fleet: захист від запитів із чужих сторінок
             r = await client.post("/api/robots/r1/claim", headers={"X-Fleet": "1"})
             assert r.status == 200 and (await r.json())["ok"]
             assert (await client.get("/")).status == 200

@@ -1,4 +1,4 @@
-"""Локальный UI: состояние, запуск команд и защита от чужих запросов."""
+"""Локальний UI: стан, запуск команд, мова та захист від чужих запитів."""
 import json
 import threading
 import time
@@ -19,10 +19,11 @@ def ui(provisioned, root):
     server.server_close()
 
 
-def call(server, path, body=None, host=None, header=True):
+def call(server, path, body=None, host=None, header=True, lang="uk"):
     port = server.server_address[1]
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}")
     req.add_header("Host", host or f"127.0.0.1:{port}")
+    req.add_header("X-Lang", lang)
     if body is not None:
         req.data = json.dumps(body).encode()
         req.add_header("Content-Type", "application/json")
@@ -41,35 +42,119 @@ def test_state(provisioned, root):
     robot = next(r for r in state["robots"] if r["id"] == 1)
     assert robot["provisioned"] and robot["slot"] == 1
     assert robot["mavlink"] == "tcp:10.150.0.1:5761"
-    assert "build/robots/flu-001/robot.rsc" in robot["files"]
+    assert "build/robots/nrk-001/robot.rsc" in robot["files"]
     acme = next(s for s in state["sites"] if s["name"] == "flu-acme")
     assert acme["has_key"] and acme["panel"] == "http://10.150.0.1:8080"
     external = next(r for r in state["robots"] if r["id"] == 3)
-    assert external["mavlink"] is None  # площадка заказчика: арбитра нет
+    assert external["mavlink"] is None  # майданчик замовника: арбітра немає
 
 
 def test_page_and_files(ui):
     status, body = call(ui, "/")
+    assert status == 200 and "налаштування НРК".encode() in body  # простий режим
+    status, body = call(ui, "/advanced")
     assert status == 200 and b"FLU fleet" in body
-    status, body = call(ui, "/api/file?path=build/robots/flu-001/robot.rsc")
-    assert status == 200 and b"fleet: flu-001" in body
-    assert call(ui, "/api/file?path=secrets/robots/1.json")[0] == 404  # секреты не отдаём
+    status, body = call(ui, "/api/file?path=build/robots/nrk-001/robot.rsc")
+    assert status == 200 and b"fleet: nrk-001" in body
+    assert call(ui, "/api/file?path=secrets/robots/1.json")[0] == 404  # секрети не віддаємо
     assert call(ui, "/api/file?path=build/../secrets/robots/1.json")[0] == 404
 
 
 def test_foreign_requests_rejected(ui):
     assert call(ui, "/api/state", host="evil.example:80")[0] == 403  # DNS rebinding
     assert call(ui, "/api/run", {"args": ["check"]}, header=False)[0] == 403  # без X-Fleet
-    assert call(ui, "/api/run", {"args": ["rm", "-rf"]})[0] == 400  # только команды fleet
+    assert call(ui, "/api/run", {"args": ["rm", "-rf"]})[0] == 400  # лише команди fleet
 
 
-def test_run_command(ui):
-    status, body = call(ui, "/api/run", {"args": ["check"]})
+def run_and_wait(ui, args, lang="uk"):
+    status, body = call(ui, "/api/run", {"args": args}, lang=lang)
     assert status == 200
     job = json.loads(body)
     deadline = time.time() + 30
     while job["running"] and time.time() < deadline:
         time.sleep(0.2)
         job = json.loads(call(ui, f"/api/jobs/{job['id']}")[1])
+    return job
+
+
+def test_run_command(ui):
+    job = run_and_wait(ui, ["check"])
     assert job["code"] == 0
-    assert "inventory в порядке" in job["output"]
+    assert "інвентар у порядку" in job["output"]
+
+
+@pytest.fixture
+def simple_ui(tmp_path):
+    """Простий режим на справжньому (порожньому) інвентарі репозиторію — як на новому ноутбуці."""
+    import shutil
+
+    from .conftest import REPO
+
+    for name in ("inventory", "base", "templates", "server"):
+        shutil.copytree(REPO / name, tmp_path / name)
+    server = UiServer(("127.0.0.1", 0), tmp_path)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield server
+    server.shutdown()
+    server.server_close()
+
+
+def test_simple_mode_prepare(simple_ui):
+    state = json.loads(call(simple_ui, "/api/simple")[1])
+    assert (state["site"], state["server"], state["robots"], state["pilots"]) == ("main", None, [], [])
+    status, body = call(simple_ui, "/api/simple/prepare", {"pilot": "ivan", "serial": "FLU-2026-0001"})
+    assert status == 200 and json.loads(body)["command"].startswith("echo H4sI")
+    state = json.loads(call(simple_ui, "/api/simple")[1])
+    assert state["local_pilots"] == ["ivan"] and state["robots"][0]["serial"] == "FLU-2026-0001"
+    assert state["robots"][0]["provisioned"] is False  # відповіді сервера ще не було
+
+
+def test_simple_mode_errors_are_readable(simple_ui):
+    status, body = call(simple_ui, "/api/simple/prepare", {"pilot": "Іван", "serial": "FLU-1"})
+    assert status == 400 and "ім'я пілота" in json.loads(body)["error"]
+    status, body = call(simple_ui, "/api/simple/apply", {"text": "привіт"})
+    assert status == 400 and "FLU1:" in json.loads(body)["error"]
+    # адреса сервера з підстановкою команд не пройде далі перевірки
+    status, body = call(simple_ui, "/api/simple/ssh", {"host": "1.2.3.4 & calc", "user": "root"})
+    assert status == 400
+
+
+def test_router_password_never_shown():
+    from fleet.ui import mask_args
+
+    assert mask_args(["bench", "mikrotik", "--id", "1", "--password", "secret"]) == \
+        ["bench", "mikrotik", "--id", "1", "--password", "***"]
+
+
+def test_job_writes_log(ui, root):
+    job = run_and_wait(ui, ["check"])
+    log = (root / job["log"]).read_text("utf-8")
+    assert job["log"].startswith("build/logs/") and job["log"].endswith("-check.log")
+    assert "# " in log and "fleet check" in log and "інвентар у порядку" in log and "# exit code 0" in log
+    assert "run: fleet check" in (root / "build" / "logs" / "ui.log").read_text("utf-8")
+
+
+def test_log_name_skips_options(ui):
+    job = run_and_wait(ui, ["render", "--robot", "1"])
+    assert job["log"].endswith("-render.log")  # не «render---robot.log»
+
+
+def test_simple_actions_are_logged(simple_ui, monkeypatch):
+    from fleet import mndp, netcheck
+
+    monkeypatch.setattr(netcheck, "check_router_link", lambda adapters=None: {"status": "no_cable", "message": "кабель не під'єднано"})
+    monkeypatch.setattr(mndp, "discover", lambda timeout=3.0: [])
+    call(simple_ui, "/api/simple/prepare", {"pilot": "ivan", "serial": "FLU-2026-0001"})
+    call(simple_ui, "/api/simple/apply", {"text": "не те"})
+    status, body = call(simple_ui, "/api/simple/check-router", {})
+    assert status == 200 and json.loads(body)["link"]["status"] == "no_cable"
+    log = (simple_ui.root / "build" / "logs" / "ui.log").read_text("utf-8")
+    assert "prepare: pilot=ivan serial=FLU-2026-0001" in log
+    assert "apply: ERROR" in log and "check-router: no_cable" in log
+
+
+def test_language_follows_request(ui):
+    job = run_and_wait(ui, ["check"], lang="en")
+    assert "inventory is fine" in job["output"]
+    status, body = call(ui, "/api/file?path=secrets/x", lang="en")
+    assert status == 404 and "only files from build/" in json.loads(body)["error"]

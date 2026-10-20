@@ -1,0 +1,20 @@
+# Тестові НРК.
+#   id — глобальний номер НРК (як на шильдику), ніколи не змінюється
+robots:
+  - id: 1
+    serial: FLU-TEST-0001
+    platform: flu-v1
+    site: flu-acme
+    service_tunnel: true
+
+  - id: 2
+    serial: FLU-TEST-0002
+    platform: flu-v1
+    site: globex
+    service_tunnel: true
+
+  - id: 3
+    serial: FLU-TEST-0003
+    platform: flu-v1
+    site: initech
+    service_tunnel: false

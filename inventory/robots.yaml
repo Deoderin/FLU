@@ -1,25 +1,18 @@
-# Роботы.
-#   id       — глобальный номер робота (как на шильдике), не меняется никогда
-#   platform — ревизия железа из base/platforms.yaml
-#   site     — площадка из sites.yaml
-#   slot     — номер робота внутри площадки, он же MAVLink SYSID.
-#              Заполняет fleet (provision / move), руками не трогать.
-#   service_tunnel — второй туннель к нам для обслуживания (нужно согласие заказчика)
+# НРК (наземні роботизовані комплекси).
+#   id       — глобальний номер НРК (як на шильдику), ніколи не змінюється
+#   serial   — заводський номер
+#   platform — ревізія заліза з base/platforms.yaml
+#   site     — майданчик із sites.yaml
+#   slot     — номер НРК на майданчику, він же MAVLink SYSID.
+#              Заповнює fleet (provision / move), руками не чіпати.
+#   service_tunnel — другий тунель до нас для обслуговування (потрібна згода замовника)
+#
+# НРК додає майстер першого налаштування (fleet setup --serial ...) або людина вручну.
+# Запис виглядає так (технічне ім'я буде nrk-001):
+#
+#   - id: 1
+#     serial: FLU-2026-0001
+#     platform: flu-v1
+#     site: main
+#     service_tunnel: false
 robots:
-  - id: 1
-    serial: FLU-2026-0001
-    platform: flu-v1
-    site: flu-acme
-    service_tunnel: true
-
-  - id: 2
-    serial: FLU-2026-0002
-    platform: flu-v1
-    site: globex
-    service_tunnel: true
-
-  - id: 3
-    serial: FLU-2026-0003
-    platform: flu-v1
-    site: initech
-    service_tunnel: false

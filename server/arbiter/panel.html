@@ -1,42 +1,45 @@
 <!doctype html>
-<html lang="ru">
+<html lang="uk">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Роботы площадки</title>
+<title>НРК майданчика</title>
 <style>
   :root {
-    --bg: #f5f6f8; --fg: #1c212b; --muted: #677084; --card: #ffffff; --line: #e1e4ea;
-    --ok: #1e8449; --warn: #a96500; --bad: #c0392b; --accent: #2456d4; --accent-fg: #ffffff;
+    --bg: #f4f5f7; --fg: #1b2029; --muted: #687083; --card: #ffffff; --line: #e1e4ea; --soft: #f0f2f5;
+    --ok: #1d8348; --warn: #a66300; --bad: #c0392b; --accent: #2357d4; --accent-fg: #ffffff; --h: 32px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #13161c; --fg: #e6e9ef; --muted: #9aa2b4; --card: #1b1f27; --line: #2a303b;
-      --ok: #4cc38a; --warn: #e3a33b; --bad: #ef6a5b; --accent: #6f93ff; --accent-fg: #0d1220;
+      --bg: #12151b; --fg: #e5e8ee; --muted: #9aa2b3; --card: #1a1e26; --line: #2a303b; --soft: #222833;
+      --ok: #4cc38a; --warn: #e2a33c; --bad: #ef6a5b; --accent: #6f93ff; --accent-fg: #0c1120;
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
-  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;
-           padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
-  header h1 { margin: 0; font-size: 18px; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); }
+  .head { max-width: 1100px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  header h1 { margin: 0 auto 0 0; font-size: 18px; }
   main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
   .muted { color: var(--muted); }
-  .robot { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; }
-  .robot.mine { border-color: var(--accent); }
+  .robot { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; }
+  .robot.mine { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
   .row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
-  .name { font-weight: 600; font-size: 16px; }
-  .badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; }
+  .name { font-weight: 700; font-size: 16px; }
+  .badge { display: inline-flex; align-items: center; height: 22px; font-size: 12px; padding: 0 9px; border-radius: 99px; border: 1px solid currentColor; }
   .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
-  button, select { font: inherit; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line);
+  button, select { font: inherit; height: var(--h); padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
                    background: var(--card); color: var(--fg); cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-  button.stop { border-color: var(--bad); color: var(--bad); font-weight: 600; }
-  button:hover { filter: brightness(0.96); }
-  h2 { font-size: 15px; margin: 12px 0 0; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  button.stop { border-color: var(--bad); color: var(--bad); font-weight: 700; }
+  button:hover { filter: brightness(0.97); }
+  .lang { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .lang button { border: 0; border-radius: 0; height: 30px; padding: 0 10px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .lang button.on { background: var(--accent); color: var(--accent-fg); }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 0; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  .journal { overflow-x: auto; }
+  td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .journal { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
   #toast { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 520px; margin: 0 auto; padding: 10px 14px;
            border-radius: 8px; background: var(--fg); color: var(--bg); opacity: 0; transition: opacity .2s; pointer-events: none; }
   #toast.show { opacity: 1; }
@@ -45,16 +48,53 @@
 </head>
 <body>
 <header>
-  <h1 id="site">Площадка</h1>
-  <div id="me" class="muted"></div>
+  <div class="head">
+    <h1 id="site"></h1>
+    <span id="me" class="muted"></span>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="uk" onclick="setLang('uk')">UK</button>
+      <button data-lang="en" onclick="setLang('en')">EN</button>
+    </div>
+  </div>
 </header>
 <main>
   <div id="robots"></div>
-  <h2>Журнал</h2>
+  <h2 id="h-journal"></h2>
   <div class="journal"><table id="journal"></table></div>
 </main>
 <div id="toast"></div>
 <script>
+const I18N = {
+  uk: {
+    title: "НРК майданчика", site: "Майданчик {site}", operator: "оператор", dispatcher: "диспетчер", journal: "Журнал",
+    offline: "немає зв'язку з НРК", no_hb: "немає heartbeat", online: "на зв'язку",
+    owner: "Власник: {owner}", you: "ви", free: "вільний", owner_gone: "станцію власника не підключено",
+    stations: "Підключені: {list}", no_stations: "Станцій немає", handover: "Передача: {by} → {to} ({age} с)",
+    stop: "Стоп (Hold)", claim: "Взяти", give: "Передати", release: "Звільнити", accept: "Прийняти", decline: "Відхилити",
+    cancel: "Скасувати передачу", takeover: "Забрати (диспетчер)", confirm_takeover: "Забрати {name} у {owner}? НРК стане в Hold.",
+    done: "готово", error: "помилка", no_access: "немає доступу",
+    events: { connect: "підключився", disconnect: "відключився", claim: "взяв", release: "звільнив", handover_offer: "пропонує передачу",
+              handover: "передача", handover_cancel: "скасував передачу", handover_expired: "передача прострочена",
+              takeover: "забрав (диспетчер)", hold: "Hold" },
+  },
+  en: {
+    title: "Site UGVs", site: "Site {site}", operator: "operator", dispatcher: "dispatcher", journal: "Journal",
+    offline: "no link to the UGV", no_hb: "no heartbeat", online: "online",
+    owner: "Owner: {owner}", you: "you", free: "free", owner_gone: "the owner's station is not connected",
+    stations: "Connected: {list}", no_stations: "No stations", handover: "Handover: {by} → {to} ({age} s)",
+    stop: "Stop (Hold)", claim: "Take", give: "Hand over", release: "Release", accept: "Accept", decline: "Decline",
+    cancel: "Cancel handover", takeover: "Take over (dispatcher)", confirm_takeover: "Take {name} from {owner}? The UGV will Hold.",
+    done: "done", error: "error", no_access: "no access",
+    events: { connect: "connected", disconnect: "disconnected", claim: "took", release: "released", handover_offer: "offers handover",
+              handover: "handover", handover_cancel: "cancelled handover", handover_expired: "handover expired",
+              takeover: "took over (dispatcher)", hold: "Hold" },
+  },
+};
+
+let lang = "uk";
+try { lang = localStorage.getItem("fleet-lang") || "uk"; } catch (e) {}
+const t = (key, vars = {}) => (I18N[lang][key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+
 const $ = (tag, attrs = {}, ...children) => {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -67,69 +107,67 @@ const $ = (tag, attrs = {}, ...children) => {
 };
 
 async function api(path, options = {}) {
-  const r = await fetch(path, { ...options, headers: { "X-Fleet": "1", "Content-Type": "application/json" } });
+  const r = await fetch(path, { ...options, headers: { "X-Fleet": "1", "X-Lang": lang, "Content-Type": "application/json" } });
   let data = {};
   try { data = await r.json(); } catch (e) { data = { message: await r.text() }; }
   return { ok: r.ok, data };
 }
 
+function setLang(next) {
+  lang = next;
+  try { localStorage.setItem("fleet-lang", lang); } catch (e) {}
+  refresh();
+}
+
 let toastTimer;
 function toast(text, error) {
-  const t = document.getElementById("toast");
-  t.textContent = text;
-  t.className = "show" + (error ? " error" : "");
+  const el = document.getElementById("toast");
+  el.textContent = text;
+  el.className = "show" + (error ? " error" : "");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.className = ""), 3500);
+  toastTimer = setTimeout(() => (el.className = ""), 3500);
 }
 
 async function act(robot, action, body) {
   const r = await api(`/api/robots/${encodeURIComponent(robot)}/${action}`, { method: "POST", body: JSON.stringify(body || {}) });
-  toast(r.data.message || (r.ok ? "готово" : "ошибка"), !r.ok);
+  toast(r.data.message || (r.ok ? t("done") : t("error")), !r.ok);
   refresh();
 }
 
 function link(r) {
-  if (!r.robot_online) return $("span", { class: "badge bad" }, "нет связи с роботом");
-  if (r.robot_heartbeat_age == null || r.robot_heartbeat_age > 5) return $("span", { class: "badge warn" }, "нет heartbeat");
-  return $("span", { class: "badge ok" }, "на связи");
+  if (!r.robot_online) return $("span", { class: "badge bad" }, t("offline"));
+  if (r.robot_heartbeat_age == null || r.robot_heartbeat_age > 5) return $("span", { class: "badge warn" }, t("no_hb"));
+  return $("span", { class: "badge ok" }, t("online"));
 }
 
 function card(r, state) {
   const me = state.me.name;
   const mine = r.owner === me;
-  const ownerText = r.owner ? (mine ? "вы" : r.owner) : "свободен";
   const info = $("div", { class: "row muted" },
-    $("span", {}, `Владелец: ${ownerText}`),
-    r.owner && !r.owner_connected ? $("span", { class: "warn" }, "станция владельца не подключена") : null,
+    $("span", {}, t("owner", { owner: r.owner ? (mine ? t("you") : r.owner) : t("free") })),
+    r.owner && !r.owner_connected ? $("span", { class: "warn" }, t("owner_gone")) : null,
     $("span", {}, `MAVLink: ${location.hostname}:${r.port}`),
-    $("span", {}, r.clients.length ? `Подключены: ${r.clients.join(", ")}` : "Станций нет"),
-  );
-  const pending = r.pending
-    ? $("div", { class: "warn" }, `Передача: ${r.pending.by} → ${r.pending.to} (${r.pending.age} с)`)
-    : null;
+    $("span", {}, r.clients.length ? t("stations", { list: r.clients.join(", ") }) : t("no_stations")));
+  const pending = r.pending ? $("div", { class: "warn" }, t("handover", r.pending)) : null;
 
   const buttons = $("div", { class: "row" });
-  if (state.stop_from_any || mine) {
-    buttons.append($("button", { class: "stop", onclick: () => act(r.name, "hold") }, "Стоп (Hold)"));
-  }
-  if (!r.owner) buttons.append($("button", { class: "primary", onclick: () => act(r.name, "claim") }, "Взять"));
+  if (state.stop_from_any || mine) buttons.append($("button", { class: "stop", onclick: () => act(r.name, "hold") }, t("stop")));
+  if (!r.owner) buttons.append($("button", { class: "primary", onclick: () => act(r.name, "claim") }, t("claim")));
   if (mine && !r.pending) {
     const others = state.operators.filter((n) => n !== me);
     const select = $("select", {}, ...others.map((n) => $("option", { value: n }, n)));
-    buttons.append(select, $("button", { onclick: () => act(r.name, "handover", { to: select.value }) }, "Передать"));
-    buttons.append($("button", { onclick: () => act(r.name, "release") }, "Освободить"));
+    buttons.append(select, $("button", { onclick: () => act(r.name, "handover", { to: select.value }) }, t("give")));
+    buttons.append($("button", { onclick: () => act(r.name, "release") }, t("release")));
   }
   if (r.pending && r.pending.to === me) {
-    buttons.append($("button", { class: "primary", onclick: () => act(r.name, "accept") }, "Принять"));
-    buttons.append($("button", { onclick: () => act(r.name, "cancel") }, "Отклонить"));
+    buttons.append($("button", { class: "primary", onclick: () => act(r.name, "accept") }, t("accept")));
+    buttons.append($("button", { onclick: () => act(r.name, "cancel") }, t("decline")));
   }
-  if (r.pending && r.pending.by === me) {
-    buttons.append($("button", { onclick: () => act(r.name, "cancel") }, "Отменить передачу"));
-  }
+  if (r.pending && r.pending.by === me) buttons.append($("button", { onclick: () => act(r.name, "cancel") }, t("cancel")));
   if (state.me.role === "dispatcher" && r.owner && !mine) {
     buttons.append($("button", {
-      onclick: () => confirm(`Забрать ${r.name} у ${r.owner}? Робот встанет в Hold.`) && act(r.name, "takeover"),
-    }, "Забрать (диспетчер)"));
+      onclick: () => confirm(t("confirm_takeover", { name: r.name, owner: r.owner })) && act(r.name, "takeover"),
+    }, t("takeover")));
   }
 
   return $("section", { class: "robot" + (mine ? " mine" : "") },
@@ -138,18 +176,24 @@ function card(r, state) {
 }
 
 async function refresh() {
+  document.documentElement.lang = lang;
+  document.title = t("title");
+  document.querySelectorAll("[data-lang]").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  document.getElementById("h-journal").textContent = t("journal");
   const s = await api("/api/state");
-  if (!s.ok) { toast(s.data.message || "нет доступа", true); return; }
+  if (!s.ok) { toast(s.data.message || t("no_access"), true); return; }
   const state = s.data;
-  document.getElementById("site").textContent = `Площадка ${state.site}`;
-  document.getElementById("me").textContent = `${state.me.name} · ${state.me.role === "dispatcher" ? "диспетчер" : "оператор"}`;
+  document.getElementById("site").textContent = t("site", { site: state.site });
+  document.getElementById("me").textContent = `${state.me.name} · ${t(state.me.role)}`;
   document.getElementById("robots").replaceChildren(...state.robots.map((r) => card(r, state)));
 
   const j = await api("/api/journal");
   if (j.ok) {
+    const events = I18N[lang].events;
     document.getElementById("journal").replaceChildren(...j.data.map((e) => {
       const extra = Object.entries(e).filter(([k]) => !["ts", "robot", "event"].includes(k)).map(([k, v]) => `${k}=${v}`).join(" ");
-      return $("tr", {}, $("td", { class: "muted" }, e.ts), $("td", {}, e.robot), $("td", {}, e.event), $("td", { class: "muted" }, extra));
+      return $("tr", {}, $("td", { class: "muted" }, e.ts), $("td", {}, e.robot), $("td", {}, events[e.event] || e.event),
+        $("td", { class: "muted" }, extra));
     }));
   }
 }

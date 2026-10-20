@@ -1,14 +1,16 @@
-"""Полётный контроллер: чтение, сравнение и заливка параметров по MAVLink.
+"""Польотний контролер: читання, порівняння і запис параметрів через MAVLink.
 
-Подключение — USB на стенде (COM5, /dev/ttyACM0) или TCP через арбитр площадки
-(tcp:10.150.0.1:5761). Через арбитр менять параметры может только владелец
-робота: возьмите робота в панели, иначе запись молча отбрасывается.
+Підключення — USB на стенді (COM5, /dev/ttyACM0) або TCP через арбітр майданчика
+(tcp:10.150.0.1:5761). Через арбітр змінювати параметри може лише власник
+НРК: візьміть НРК у панелі, інакше запис мовчки відкидається.
 """
 from __future__ import annotations
 
 import time
 
 from pymavlink import mavutil
+
+from .i18n import T
 
 GCS_SYSID = 255
 GCS_COMPID = 190
@@ -26,7 +28,7 @@ def _param_id(msg) -> str:
 
 
 def connect(conn: str, baud: int = 115200, timeout: float = 15):
-    """Подключиться и дождаться heartbeat автопилота (не камеры, не другой станции)."""
+    """Підключитися й дочекатися heartbeat автопілота (не камери, не іншої станції)."""
     m = mavutil.mavlink_connection(conn, baud=baud, source_system=GCS_SYSID, source_component=GCS_COMPID)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -35,11 +37,12 @@ def connect(conn: str, baud: int = 115200, timeout: float = 15):
             m.target_system, m.target_component = hb.get_srcSystem(), hb.get_srcComponent()
             return m, hb
     m.close()
-    raise FcError(f"нет heartbeat автопилота на {conn} за {int(timeout)} с")
+    raise FcError(T(f"немає heartbeat автопілота на {conn} за {int(timeout)} с",
+                    f"no autopilot heartbeat on {conn} within {int(timeout)} s"))
 
 
 def fetch_params(m, timeout: float = 90) -> tuple[dict[str, float], dict[str, int]]:
-    """Все параметры: значения и типы. Потерянные дозапрашиваются по индексу."""
+    """Усі параметри: значення і типи. Втрачені дозапитуються за індексом."""
     values: dict[str, float] = {}
     types: dict[str, int] = {}
     seen: set[int] = set()
@@ -62,12 +65,13 @@ def fetch_params(m, timeout: float = 90) -> tuple[dict[str, float], dict[str, in
             for idx in sorted(set(range(total)) - seen)[:20]:
                 m.mav.param_request_read_send(m.target_system, m.target_component, b"", idx)
             last_rx = time.monotonic()
-    got = f"{len(seen)} из {total}" if total else "ни одного"
-    raise FcError(f"параметры получены не полностью ({got}) за {int(timeout)} с")
+    got = T(f"{len(seen)} з {total}", f"{len(seen)} of {total}") if total else T("жодного", "none")
+    raise FcError(T(f"параметри отримано не повністю ({got}) за {int(timeout)} с",
+                    f"parameters received incompletely ({got}) within {int(timeout)} s"))
 
 
 def set_param(m, name: str, value: float, ptype: int, retries: int = 3) -> float | None:
-    """Записать параметр и дождаться подтверждения. None — подтверждения нет."""
+    """Записати параметр і дочекатися підтвердження. None — підтвердження немає."""
     for _ in range(retries):
         m.mav.param_set_send(m.target_system, m.target_component, name.encode(), float(value), ptype)
         deadline = time.monotonic() + 3
@@ -86,7 +90,7 @@ def reboot(m) -> None:
 
 
 def telemetry(m, seconds: float = 8) -> dict:
-    """Короткий срез телеметрии для приёмочного теста."""
+    """Короткий зріз телеметрії для приймального тесту."""
     m.mav.request_data_stream_send(m.target_system, m.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 2, 1)
     out: dict = {}
     deadline = time.monotonic() + seconds

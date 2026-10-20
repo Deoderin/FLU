@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 400" width="940" height="400" font-family="Segoe UI, system-ui, sans-serif">
+  <title>Підключення MikroTik на стенді</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ff4d1a"/>
+    </marker>
+  </defs>
+  <rect width="940" height="400" fill="#ffffff"/>
+
+  <!-- інтернет -->
+  <rect x="20" y="40" width="200" height="64" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="120" y="66" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">Сервер майданчика</text>
+  <text x="120" y="88" text-anchor="middle" font-size="13" fill="#475569">203.0.113.10, UDP 51820</text>
+  <line x1="120" y1="104" x2="120" y2="158" stroke="#64748b" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#a)"/>
+  <text x="130" y="136" font-size="12" fill="#475569">WireGuard через Starlink</text>
+
+  <rect x="20" y="164" width="200" height="64" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="120" y="190" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">Starlink</text>
+  <text x="120" y="212" text-anchor="middle" font-size="13" fill="#475569">роздає адресу по DHCP</text>
+  <line x1="220" y1="196" x2="320" y2="196" stroke="#334155" stroke-width="3"/>
+  <text x="270" y="186" text-anchor="middle" font-size="13" font-weight="600" fill="#2357d4">ether1 (WAN)</text>
+
+  <!-- роутер -->
+  <rect x="320" y="40" width="200" height="320" rx="12" fill="#eef3ff" stroke="#2357d4" stroke-width="2"/>
+  <text x="420" y="74" text-anchor="middle" font-size="17" font-weight="700" fill="#1e3a8a">MikroTik</text>
+  <text x="420" y="96" text-anchor="middle" font-size="13" fill="#475569">192.168.88.1</text>
+  <g font-size="13" font-weight="600" fill="#2357d4">
+    <text x="508" y="140" text-anchor="end">ether2</text>
+    <text x="508" y="210" text-anchor="end">ether3</text>
+    <text x="508" y="280" text-anchor="end">ether4</text>
+    <text x="508" y="342" text-anchor="end">ether5</text>
+  </g>
+
+  <!-- пристрої НРК -->
+  <g stroke="#334155" stroke-width="3">
+    <line x1="520" y1="136" x2="620" y2="136"/>
+    <line x1="520" y1="206" x2="620" y2="206"/>
+    <line x1="520" y1="276" x2="620" y2="276"/>
+    <line x1="520" y1="338" x2="620" y2="338"/>
+  </g>
+  <g>
+    <rect x="620" y="108" width="200" height="56" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
+    <text x="720" y="131" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Мережевий адаптер ФК</text>
+    <text x="720" y="151" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.2, TCP 5760</text>
+
+    <rect x="620" y="178" width="200" height="56" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
+    <text x="720" y="201" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Камера 1</text>
+    <text x="720" y="221" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.8</text>
+
+    <rect x="620" y="248" width="200" height="56" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
+    <text x="720" y="271" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Камера 2</text>
+    <text x="720" y="291" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.9</text>
+
+    <rect x="620" y="314" width="200" height="56" rx="10" fill="#fff4ec" stroke="#ff4d1a" stroke-width="2"/>
+    <text x="720" y="337" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Ноутбук (стенд)</text>
+    <text x="720" y="357" text-anchor="middle" font-size="12.5" fill="#475569">DHCP 192.168.88.100–199</text>
+  </g>
+
+  <!-- USB до ФК -->
+  <path d="M820 342 C 872 342, 872 136, 824 136" fill="none" stroke="#ff4d1a" stroke-width="2.5" stroke-dasharray="7 5" marker-end="url(#u)"/>
+  <text x="905" y="240" text-anchor="middle" font-size="12.5" font-weight="600" fill="#c2410c" transform="rotate(-90 905 240)">USB до ФК (параметри)</text>
+</svg>

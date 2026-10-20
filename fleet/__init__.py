@@ -1,8 +1,8 @@
-"""fleet — конвейер прошивки и обслуживания роботов FLU."""
+"""fleet — конвеєр прошивки та обслуговування НРК FLU."""
 import os
 from pathlib import Path
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
-# Корень репозитория: inventory/, templates/, base/, secrets/, build/
+# Корінь репозиторію: inventory/, templates/, base/, secrets/, build/
 ROOT = Path(os.environ.get("FLEET_ROOT", Path(__file__).resolve().parents[1]))

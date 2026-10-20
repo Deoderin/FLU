@@ -1,0 +1,20 @@
+operators:
+  - name: dispatcher-acme
+    id: 2
+    role: dispatcher
+    sites: [flu-acme]
+
+  - name: ivanenko
+    id: 10
+    role: operator
+    sites: [flu-acme]
+
+  - name: petrenko
+    id: 11
+    role: operator
+    sites: [flu-acme, globex]
+
+  - name: test-bench
+    id: 250
+    role: dispatcher
+    sites: [flu-acme, globex]

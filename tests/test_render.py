@@ -17,8 +17,8 @@ def test_provision_assigns_slot_and_keys(provisioned, store, root):
     r1 = provisioned.robot(1)
     assert (r1.site, r1.slot) == ("flu-acme", 1)
     assert store.has_site("flu-acme") and store.has_site("globex") and store.has_service()
-    assert not store.has_site("initech")  # сервер заказчика — не наш, ключа нет
-    assert (root / "build" / "robots" / "flu-001" / "robot.rsc").exists()
+    assert not store.has_site("initech")  # сервер замовника — не наш, ключа немає
+    assert (root / "build" / "robots" / "nrk-001" / "robot.rsc").exists()
 
 
 def test_provision_is_idempotent(provisioned, store):
@@ -50,8 +50,8 @@ def test_robot_rsc_is_ascii_and_complete(provisioned, store):
         assert f'comment="fleet {fp}"' in rsc
         assert "to-addresses=192.168.88.0/28" in rsc
     rsc3, _ = r.robot_rsc(provisioned.robot(3), provisioned.site("initech"), 1)
-    assert "wg-svc" not in rsc3  # заказчик не дал сервисный туннель
-    assert "fleet-mgmt" in rsc3 and "list=fleet-mgmt address" not in rsc3  # ssh с их сервера не открываем
+    assert "wg-svc" not in rsc3  # замовник не дав сервісний тунель
+    assert "fleet-mgmt" in rsc3 and "list=fleet-mgmt address" not in rsc3  # ssh з їхнього сервера не відкриваємо
 
 
 def test_fingerprint_is_stable_and_tracks_changes(provisioned, store):
@@ -73,14 +73,14 @@ def test_server_bundle(provisioned, store):
     arbiter = safe_yaml.load((server / "config" / "arbiter.yaml").read_text("utf-8"))
     assert arbiter["bind"] == "10.150.0.1"
     assert arbiter["robots"] == [
-        {"name": "flu-001", "slot": 1, "host": "10.150.16.2", "port": 5760, "listen": 5761, "hold_mode": 4}
+        {"name": "nrk-001", "slot": 1, "host": "10.150.16.2", "port": 5760, "listen": 5761, "hold_mode": 4}
     ]
-    assert {o["name"] for o in arbiter["operators"]} == {"dispatcher-acme", "ivanov", "petrov", "test-bench"}
+    assert {o["name"] for o in arbiter["operators"]} == {"dispatcher-acme", "ivanenko", "petrenko", "test-bench"}
 
     mtx = safe_yaml.load((server / "config" / "mediamtx.yml").read_text("utf-8"))
-    cam = mtx["paths"]["flu-001-cam1"]
+    cam = mtx["paths"]["nrk-001-cam1"]
     assert cam["sourceOnDemand"] is True
-    assert re.fullmatch(r"rtsp://admin:\w+@10\.150\.16\.11:554/Streaming/Channels/102", cam["source"])
+    assert re.fullmatch(r"rtsp://admin:\w+@10\.150\.16\.8:554/Streaming/Channels/102", cam["source"])
     assert mtx["rtspAddress"] == "10.150.0.1:8554"
 
     for name in ("docker-compose.yml", "install.sh", "arbiter/arbiter.py", "arbiter/Dockerfile"):
@@ -92,7 +92,7 @@ def test_operator_config_only_reaches_server(provisioned, store):
     r = Renderer(provisioned, store)
     site = provisioned.site("flu-acme")
     r.render_site(site)
-    conf = (r.site_dir(site) / "operators" / "ivanov.conf").read_text("utf-8")
+    conf = (r.site_dir(site) / "operators" / "ivanenko.conf").read_text("utf-8")
     assert "Address = 10.150.1.10/32" in conf
     assert "AllowedIPs = 10.150.0.1/32" in conf
 
@@ -102,7 +102,16 @@ def test_integration_kit(provisioned, store):
     readme, peers, creds = r.render_kit(provisioned.site("initech"))
     assert "AllowedIPs = 172.20.5.2/32, 172.20.5.64/28" in peers.read_text("utf-8")
     assert "172.20.5.66:5760" in readme.read_text("utf-8")
-    assert creds.read_text("utf-8").count("flu-003") == 2
+    assert creds.read_text("utf-8").count("nrk-003") == 2
+
+
+def test_integration_kit_in_english(provisioned, store):
+    from fleet.i18n import set_lang
+
+    set_lang("en")
+    readme, _, _ = Renderer(provisioned, store).render_kit(provisioned.site("initech"))
+    text = readme.read_text("utf-8")
+    assert text.startswith("# Connecting FLU UGVs") and "НРК" not in text
 
 
 def test_move_scripts(provisioned, store):
@@ -114,7 +123,7 @@ def test_move_scripts(provisioned, store):
     assert 'comment="fleet-site:globex pending"' in add_text
     assert "name=wg-globex" in add_text and "dst-address=10.160.16.16/28" in add_text
     assert ":delay 10m" in add_text and "fleet-rollback-globex" in add_text
-    # подтверждение: сначала снимаем pending, потом удаляем старую площадку
+    # підтвердження: спочатку знімаємо pending, потім видаляємо старий майданчик
     assert commit_text.index('comment="fleet-site:globex"') < commit_text.index('remove [find comment="fleet-site:flu-acme"]')
     _, fp_after = r.robot_rsc(robot, provisioned.site("globex"), 2)
     assert f'comment="fleet {fp_after}"' in commit_text
@@ -122,7 +131,7 @@ def test_move_scripts(provisioned, store):
 
 def test_lost_site_key_is_not_silently_regenerated(provisioned, store, root):
     (root / "secrets" / "sites" / "flu-acme.json").unlink()
-    with pytest.raises(DeployError, match="Восстановите secrets"):
+    with pytest.raises(DeployError, match="Відновіть secrets"):
         ensure_site_key(provisioned, store, provisioned.site("flu-acme"))
 
 

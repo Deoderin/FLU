@@ -1,8 +1,8 @@
-"""Адресный план: все адреса робота выводятся из площадки и его slot.
+"""Адресний план: усі адреси НРК виводяться з майданчика та його slot.
 
-Внутри робота сеть всегда одна и та же (192.168.88.0/24). Снаружи, через туннель
-площадки, робот виден блоком /28 из robot_lans: MikroTik делает netmap
-блок -> 192.168.88.0/28, поэтому адрес устройства = начало блока + номер хоста.
+Усередині НРК мережа завжди однакова (192.168.88.0/24). Ззовні, через тунель
+майданчика, НРК видно блоком /28 з robot_lans: MikroTik робить netmap
+блок -> 192.168.88.0/28, тож адреса пристрою = початок блоку + номер хоста.
 """
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ if TYPE_CHECKING:
 
 LAN = ipaddress.ip_network("192.168.88.0/24")
 LAN_MAPPED = ipaddress.ip_network("192.168.88.0/28")
-HOSTS = {"router": 1, "fc": 2, "cam1": 11, "cam2": 12}
+HOSTS = {"router": 1, "fc": 2, "cam1": 8, "cam2": 9}
 CAMERAS = ("cam1", "cam2")
 BLOCK_PREFIX = LAN_MAPPED.prefixlen
 BLOCK_SIZE = LAN_MAPPED.num_addresses
-MAX_SLOT = 250  # slot — это MAVLink SYSID; 255 занят наземной станцией
+MAX_SLOT = 250  # slot — це MAVLink SYSID; 255 зайнятий наземною станцією
 
-ARBITER_BASE_PORT = 5760  # оператор подключается к роботу со slot N на порт 5760 + N
+ARBITER_BASE_PORT = 5760  # оператор підключається до НРК зі slot N на порт 5760 + N
 PANEL_PORT = 8080
 RTSP_PORT = 8554
 WEBRTC_PORT = 8889
@@ -57,8 +57,8 @@ def arbiter_port(slot: int) -> int:
 
 
 def capacity(site: Site) -> int:
-    """Сколько роботов помещается на площадку."""
-    tunnel = site.network.tunnel.num_addresses - 3  # адрес сети, сервер, broadcast
+    """Скільки НРК вміщується на майданчик."""
+    tunnel = site.network.tunnel.num_addresses - 3  # адреса мережі, сервер, broadcast
     blocks = site.network.robot_lans.num_addresses // BLOCK_SIZE
     return max(0, min(MAX_SLOT, tunnel, blocks))
 
@@ -68,7 +68,7 @@ def service_server_ip(svc: Service) -> IPv4Address:
 
 
 def service_engineers_net(svc: Service) -> IPv4Network:
-    """Первая /24 сервисной сети: сервер и инженеры. Роботы — дальше."""
+    """Перша /24 сервісної мережі: сервер та інженери. НРК — далі."""
     return ipaddress.ip_network((svc.network.network_address, 24))
 
 

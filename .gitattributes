@@ -1,4 +1,4 @@
-# Скрипты и шаблоны уходят на Linux и RouterOS: только LF, даже при checkout на Windows
+# Скрипти й шаблони йдуть на Linux і RouterOS: лише LF, навіть під час checkout у Windows
 *.sh   text eol=lf
 *.j2   text eol=lf
 *.rsc  text eol=lf
@@ -7,3 +7,7 @@
 *.yml  text eol=lf
 *.html text eol=lf
 Dockerfile text eol=lf
+
+# Установник для Windows: cmd надійно працює лише з CRLF
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf

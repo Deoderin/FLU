@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Арбитр управления MAVLink для площадки FLU.
+"""Арбітр керування MAVLink для майданчика FLU.
 
-Для каждого робота арбитр держит одно TCP-соединение с полётным контроллером
-и открывает TCP-порт для наземных станций (QGroundControl, Mission Planner):
+Для кожного НРК арбітр тримає одне TCP-з'єднання з польотним контролером
+і відкриває TCP-порт для наземних станцій (QGroundControl, Mission Planner):
 
-* телеметрия робота уходит всем подключённым станциям;
-* команды проходят только от владельца робота (остальным — чтение и «стоп»);
-* heartbeat к роботу пропускается только от владельца, поэтому GCS-failsafe
-  робота следит именно за ним: пропал владелец — робот встал.
+* телеметрія НРК іде всім підключеним станціям;
+* команди проходять лише від власника НРК (іншим — читання і «стоп»);
+* heartbeat до НРК пропускається лише від власника, тож GCS-failsafe
+  НРК стежить саме за ним: зник власник — НРК зупинився.
 
-Оператор определяется по адресу в туннеле WireGuard — подделать его нельзя.
-Взять, передать и забрать робота можно в веб-панели; всё пишется в журнал.
-Конфиг перечитывается на лету: деплой не рвёт соединения операторов.
+Оператор визначається за адресою в тунелі WireGuard — підробити її не можна.
+Взяти, передати й забрати НРК можна у веб-панелі; усе пишеться в журнал.
+Конфіг перечитується на льоту: розгортання не рве з'єднання операторів.
+Мова відповідей API — із заголовка X-Lang (uk / en).
 """
 from __future__ import annotations
 
@@ -36,11 +37,15 @@ log = logging.getLogger("arbiter")
 GCS_SYSID = 255
 GCS_COMPID = mavlink.MAV_COMP_ID_MISSIONPLANNER
 CLIENT_BUFFER_LIMIT = 1 << 20
-ROBOT_IDLE_TIMEOUT_S = 15  # робот молчит дольше — переподключаемся
+ROBOT_IDLE_TIMEOUT_S = 15  # НРК мовчить довше — перепідключаємося
 RECONNECT_DELAY_S = 3
 CONFIG_POLL_S = 5
 PANEL = Path(__file__).with_name("panel.html")
 json_dumps = functools.partial(json.dumps, ensure_ascii=False)
+
+
+def tr(lang: str, uk: str, en: str) -> str:
+    return en if lang == "en" else uk
 
 
 def new_parser() -> mavlink.MAVLink:
@@ -62,13 +67,13 @@ class Client:
         if self.writer.is_closing():
             return
         if self.writer.transport.get_write_buffer_size() > CLIENT_BUFFER_LIMIT:
-            self.dropped += 1  # медленный клиент: телеметрия всё равно устареет, не копим
+            self.dropped += 1  # повільний клієнт: телеметрія все одно застаріє, не накопичуємо
             return
         self.writer.write(buf)
 
 
 class Journal:
-    """Владельцы роботов (переживают перезапуск) и журнал событий."""
+    """Власники НРК (переживають перезапуск) і журнал подій."""
 
     def __init__(self, state_dir: Path):
         state_dir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +109,7 @@ class Journal:
 
 
 class RobotLink:
-    """Один робот: соединение с ФК и порт для наземных станций."""
+    """Один НРК: з'єднання з ФК і порт для наземних станцій."""
 
     def __init__(self, arb: Arbiter, cfg: dict):
         self.arb = arb
@@ -113,7 +118,7 @@ class RobotLink:
         self.clients: set[Client] = set()
         self.robot_writer: asyncio.StreamWriter | None = None
         self.robot_hb = 0.0
-        self.robot_sysid: int | None = None  # фактический SYSID: после переезда может ещё не совпадать со slot
+        self.robot_sysid: int | None = None  # фактичний SYSID: після переїзду може ще не збігатися зі slot
         self.owner_hb = 0.0
         self.ftp_client: Client | None = None
         self.pending: dict | None = None  # передача: {"to", "by", "since"}
@@ -124,7 +129,7 @@ class RobotLink:
     async def start(self, bind: str) -> None:
         self.server = await asyncio.start_server(self.handle_client, bind, self.cfg["listen"])
         self.task = asyncio.create_task(self.robot_loop())
-        log.info("%s: станции -> %s:%s, робот %s:%s", self.name, bind, self.cfg["listen"], self.cfg["host"], self.cfg["port"])
+        log.info("%s: станції -> %s:%s, НРК %s:%s", self.name, bind, self.cfg["listen"], self.cfg["host"], self.cfg["port"])
 
     async def stop(self) -> None:
         if self.task:
@@ -136,7 +141,7 @@ class RobotLink:
         if self.robot_writer:
             self.robot_writer.close()
 
-    # --- робот ---------------------------------------------------------------
+    # --- НРК -----------------------------------------------------------------
 
     async def robot_loop(self) -> None:
         host, port = self.cfg["host"], self.cfg["port"]
@@ -146,7 +151,7 @@ class RobotLink:
             except (OSError, asyncio.TimeoutError):
                 await asyncio.sleep(RECONNECT_DELAY_S)
                 continue
-            log.info("%s: робот на связи", self.name)
+            log.info("%s: НРК на зв'язку", self.name)
             self.robot_writer = writer
             parser = new_parser()
             try:
@@ -160,7 +165,7 @@ class RobotLink:
             finally:
                 self.robot_writer = None
                 writer.close()
-                log.warning("%s: связь с роботом потеряна", self.name)
+                log.warning("%s: зв'язок із НРК втрачено", self.name)
             await asyncio.sleep(1)
 
     def from_robot(self, parser: mavlink.MAVLink, data: bytes) -> None:
@@ -173,7 +178,7 @@ class RobotLink:
                 self.robot_sysid = msg.get_srcSystem()
             buf = msg.get_msgbuf()
             if t == "FILE_TRANSFER_PROTOCOL" and self.ftp_client in self.clients:
-                self.ftp_client.send(buf)  # ответ FTP — только тому, кто спрашивал
+                self.ftp_client.send(buf)  # відповідь FTP — лише тому, хто питав
                 continue
             for client in list(self.clients):
                 client.send(buf)
@@ -189,13 +194,13 @@ class RobotLink:
         )
         self.to_robot(msg.pack(self.injector))
 
-    # --- наземные станции ----------------------------------------------------
+    # --- наземні станції -----------------------------------------------------
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         ip = writer.get_extra_info("peername")[0]
         op = self.arb.operators.get(ip)
         if op is None:
-            log.warning("%s: отклонено подключение с неизвестного адреса %s", self.name, ip)
+            log.warning("%s: відхилено підключення з невідомої адреси %s", self.name, ip)
             writer.close()
             return
         client = Client(op["name"], op["role"], writer)
@@ -231,7 +236,7 @@ class RobotLink:
                 self.arb.journal.event(self.name, "hold", by=client.name, via="gcs")
             self.to_robot(msg.get_msgbuf())
 
-    # --- состояние -----------------------------------------------------------
+    # --- стан ----------------------------------------------------------------
 
     def expire_pending(self) -> None:
         if self.pending and time.monotonic() - self.pending["since"] > self.arb.policy.handover_timeout_s:
@@ -284,7 +289,7 @@ class Arbiter:
         for name in list(self.links):
             if wanted.get(name) != self.links[name].cfg:
                 await self.links.pop(name).stop()
-                log.info("%s: снят с арбитра", name)
+                log.info("%s: знято з арбітра", name)
         for name, rcfg in wanted.items():
             if name in self.links:
                 continue
@@ -292,11 +297,11 @@ class Arbiter:
             try:
                 await link.start(self.bind)
             except OSError as exc:
-                log.error("%s: не удалось открыть порт %s: %s", name, rcfg["listen"], exc)
+                log.error("%s: не вдалося відкрити порт %s: %s", name, rcfg["listen"], exc)
                 continue
             self.links[name] = link
 
-        # Оператора удалили из конфига — его соединения закрываем
+        # Оператора прибрали з конфігу — його з'єднання закриваємо
         for link in self.links.values():
             for client in list(link.clients):
                 ip = client.writer.get_extra_info("peername")[0]
@@ -308,96 +313,103 @@ class Arbiter:
             await asyncio.sleep(CONFIG_POLL_S)
             try:
                 if self.config_path.stat().st_mtime != self._mtime:
-                    log.info("конфиг изменился, перечитываю")
+                    log.info("конфіг змінився, перечитую")
                     await self.load_config()
             except Exception:
-                log.exception("не удалось перечитать конфиг, работаю со старым")
+                log.exception("не вдалося перечитати конфіг, працюю зі старим")
 
     def set_owner(self, link: RobotLink, name: str | None, event: str, **fields) -> None:
         self.journal.set_owner(link.name, name)
         link.owner_hb = 0.0
         self.journal.event(link.name, event, **fields)
 
-    def act(self, op: dict, robot: str, action: str, body: dict) -> tuple[int, str]:
+    def act(self, op: dict, robot: str, action: str, body: dict, lang: str = "uk") -> tuple[int, str]:
+        m = functools.partial(tr, lang)
         link = self.links.get(robot)
         if link is None:
-            return 404, "нет такого робота"
+            return 404, m("немає такого НРК", "no such UGV")
         link.expire_pending()
         me, owner = op["name"], self.journal.owner(robot)
         hold = self.policy.hold_on_handover
 
         if action == "claim":
             if owner == me:
-                return 200, "робот уже ваш"
+                return 200, m("НРК уже ваш", "the UGV is already yours")
             if owner is not None:
-                return 409, f"робот занят: владелец {owner}. Попросите его передать робота или обратитесь к диспетчеру"
+                return 409, m(f"НРК зайнятий: власник {owner}. Попросіть його передати НРК або зверніться до диспетчера",
+                              f"the UGV is taken: owner {owner}. Ask them to hand it over or contact the dispatcher")
             self.set_owner(link, me, "claim", by=me)
-            return 200, "робот ваш"
+            return 200, m("НРК ваш", "the UGV is yours")
 
         if action == "release":
             if owner != me:
-                return 403, "освободить робота может только владелец"
+                return 403, m("звільнити НРК може лише власник", "only the owner can release the UGV")
             if hold:
                 link.send_hold()
             link.pending = None
             self.set_owner(link, None, "release", by=me, hold=hold)
-            return 200, "робот свободен"
+            return 200, m("НРК вільний", "the UGV is free")
 
         if action == "handover":
             if owner != me:
-                return 403, "передать робота может только владелец"
+                return 403, m("передати НРК може лише власник", "only the owner can hand over the UGV")
             to = str(body.get("to", ""))
             if to == me or to not in {o["name"] for o in self.operators.values()}:
-                return 400, "выберите другого оператора площадки"
+                return 400, m("виберіть іншого оператора майданчика", "choose another operator of the site")
             link.pending = {"to": to, "by": me, "since": time.monotonic()}
             if hold:
                 link.send_hold()
             self.journal.event(robot, "handover_offer", by=me, to=to, hold=hold)
-            return 200, f"ждём, пока {to} примет робота"
+            return 200, m(f"чекаємо, поки {to} прийме НРК", f"waiting for {to} to accept the UGV")
 
         if action == "accept":
             if not link.pending or link.pending["to"] != me:
-                return 409, "вам этого робота не передавали"
+                return 409, m("вам цей НРК не передавали", "this UGV was not handed over to you")
             if not any(c.name == me for c in link.clients):
-                return 409, "сначала подключитесь к роботу в наземной станции: так видно, что связь у вас есть"
+                return 409, m("спершу підключіться до НРК у наземній станції: так видно, що зв'язок у вас є",
+                              "connect to the UGV in your ground station first: this shows that your link works")
             prev = link.pending["by"]
             link.pending = None
             self.set_owner(link, me, "handover", by=prev, to=me)
-            return 200, "робот ваш"
+            return 200, m("НРК ваш", "the UGV is yours")
 
         if action == "cancel":
             if not link.pending or me not in (link.pending["to"], link.pending["by"]):
-                return 409, "нет передачи, которую вы можете отменить"
+                return 409, m("немає передачі, яку ви можете скасувати", "there is no handover you can cancel")
             self.journal.event(robot, "handover_cancel", by=me)
             link.pending = None
-            return 200, "передача отменена"
+            return 200, m("передачу скасовано", "handover cancelled")
 
         if action == "takeover":
             if op["role"] != "dispatcher":
-                return 403, "принудительно забрать робота может только диспетчер"
+                return 403, m("примусово забрати НРК може лише диспетчер", "only a dispatcher can take over a UGV")
             if hold:
                 link.send_hold()
             link.pending = None
             self.set_owner(link, me, "takeover", by=me, previous=owner, hold=hold)
-            return 200, "робот ваш (принудительно)"
+            return 200, m("НРК ваш (примусово)", "the UGV is yours (taken over)")
 
         if action == "hold":
             if owner != me and not self.policy.stop_from_any:
-                return 403, "остановить робота может только владелец"
+                return 403, m("зупинити НРК може лише власник", "only the owner can stop the UGV")
             link.send_hold()
             self.journal.event(robot, "hold", by=me, via="panel")
-            return 200, "команда Hold отправлена"
+            return 200, m("команду Hold надіслано", "Hold command sent")
 
-        return 400, "неизвестное действие"
+        return 400, m("невідома дія", "unknown action")
 
 
 def make_app(arb: Arbiter) -> web.Application:
     routes = web.RouteTableDef()
 
+    def lang_of(request: web.Request) -> str:
+        return "en" if request.headers.get("X-Lang") == "en" else "uk"
+
     def operator(request: web.Request) -> dict:
         op = arb.operators.get(request.remote)
         if op is None:
-            raise web.HTTPForbidden(text="неизвестный адрес: подключитесь через WireGuard площадки")
+            raise web.HTTPForbidden(text=tr(lang_of(request), "невідома адреса: підключіться через WireGuard майданчика",
+                                            "unknown address: connect through the site WireGuard"))
         return op
 
     @routes.get("/")
@@ -425,15 +437,16 @@ def make_app(arb: Arbiter) -> web.Application:
     @routes.post("/api/robots/{name}/{action}")
     async def action(request: web.Request) -> web.Response:
         op = operator(request)
-        # Свой заголовок: чужая страница в браузере оператора не сможет
-        # отправить такой запрос без CORS, а CORS мы не разрешаем.
+        lang = lang_of(request)
+        # Власний заголовок: чужа сторінка в браузері оператора не зможе
+        # надіслати такий запит без CORS, а CORS ми не дозволяємо.
         if request.headers.get("X-Fleet") != "1":
-            raise web.HTTPForbidden(text="нет заголовка X-Fleet")
+            raise web.HTTPForbidden(text=tr(lang, "немає заголовка X-Fleet", "the X-Fleet header is missing"))
         try:
             body = await request.json() if request.can_read_body else {}
         except json.JSONDecodeError:
             body = {}
-        code, message = arb.act(op, request.match_info["name"], request.match_info["action"], body or {})
+        code, message = arb.act(op, request.match_info["name"], request.match_info["action"], body or {}, lang)
         return web.json_response({"ok": code == 200, "message": message}, status=code, dumps=json_dumps)
 
     app = web.Application()
@@ -452,7 +465,7 @@ async def run(config: Path, state: Path) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Арбитр управления MAVLink площадки FLU")
+    p = argparse.ArgumentParser(description="Арбітр керування MAVLink майданчика FLU")
     p.add_argument("--config", default="/config/arbiter.yaml")
     p.add_argument("--state", default="/state")
     p.add_argument("-v", "--verbose", action="store_true")

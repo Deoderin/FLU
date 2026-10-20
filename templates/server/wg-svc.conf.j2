@@ -1,5 +1,5 @@
 # fleet: service tunnel hub - generated, do not edit.
-# Engineers ({{ engineers_net }}) may reach robots; robots may not reach anyone.
+# Engineers ({{ engineers_net }}) may reach UGVs; UGVs may not reach anyone.
 [Interface]
 Address = {{ server_ip }}/{{ prefix }}
 ListenPort = {{ port }}
@@ -21,7 +21,7 @@ AllowedIPs = {{ e.ip }}/32
 {% endfor %}
 {% for r in robots %}
 
-# robot {{ r.name }} (id {{ r.id }})
+# UGV {{ r.name }} (id {{ r.id }})
 [Peer]
 PublicKey = {{ r.public_key }}
 AllowedIPs = {{ r.ip }}/32

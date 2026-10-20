@@ -1,18 +1,18 @@
 <!doctype html>
-<html lang="ru">
+<html lang="uk">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FLU fleet</title>
 <style>
   :root {
-    --bg: #f4f5f7; --panel: #ffffff; --fg: #1b2029; --muted: #6a7283; --line: #e2e5eb; --soft: #eef0f4;
+    --bg: #f3f4f6; --panel: #ffffff; --fg: #1a1f28; --muted: #687083; --line: #e1e4ea; --soft: #f0f2f5;
     --accent: #2357d4; --accent-fg: #ffffff; --ok: #1d8348; --warn: #a66300; --bad: #c0392b;
-    --console-bg: #11151c; --console-fg: #d7dde8;
+    --console-bg: #11151c; --console-fg: #d7dde8; --h: 32px; --r: 8px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #12151b; --panel: #1a1e26; --fg: #e5e8ee; --muted: #9aa2b3; --line: #2a303b; --soft: #222833;
+      --bg: #111419; --panel: #191d25; --fg: #e5e8ee; --muted: #9aa2b3; --line: #2a303b; --soft: #212732;
       --accent: #6f93ff; --accent-fg: #0c1120; --ok: #4cc38a; --warn: #e2a33c; --bad: #ef6a5b;
       --console-bg: #0b0e13; --console-fg: #d7dde8;
     }
@@ -20,73 +20,104 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   button, select, input { font: inherit; color: inherit; }
-  button { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; white-space: nowrap; }
+  button { height: var(--h); padding: 0 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--panel);
+           cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
   button:hover:not(:disabled) { background: var(--soft); }
   button:disabled { opacity: .45; cursor: default; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-  button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
   button.danger { color: var(--bad); border-color: var(--bad); }
-  select, input { padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); min-width: 0; }
+  select, input[type=text], input[type=password] { height: var(--h); padding: 0 10px; border-radius: var(--r);
+           border: 1px solid var(--line); background: var(--panel); min-width: 0; width: 100%; }
   a { color: var(--accent); }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
   .muted { color: var(--muted); }
   .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
-
-  .top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
-         padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
-  .brand { font-weight: 700; font-size: 16px; }
-  .brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: 100%; white-space: nowrap; }
-  .check { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-  .brand .muted { font-weight: 400; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .chip { display: inline-block; font-size: 12px; padding: 1px 9px; border-radius: 99px; border: 1px solid currentColor; }
-
-  .banner { margin: 12px 16px 0; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--bad); color: var(--bad); background: var(--panel); }
-  .banner ul { margin: 4px 0 0; padding-left: 18px; }
   .hidden { display: none !important; }
 
-  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
-  @media (max-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr); } }
-  main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-content: start; min-width: 0; }
-  @media (max-width: 600px) { .layout { padding: 12px; } .top { padding: 10px 12px; } }
+  /* шапка */
+  .top { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .top-inner { max-width: 1360px; margin: 0 auto; padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+  .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-right: auto; white-space: nowrap; }
+  .brand b { font-size: 16px; }
+  .brand .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .badge { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 99px; font-size: 12px;
+           border: 1px solid currentColor; white-space: nowrap; }
+  .lang { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+  .lang button { border: 0; border-radius: 0; height: calc(var(--h) - 2px); padding: 0 10px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .lang button.on { background: var(--accent); color: var(--accent-fg); }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 6px; align-content: start; }
-  .card .title { font-weight: 600; font-size: 15px; }
+  .banner { max-width: 1360px; margin: 14px auto 0; padding: 10px 14px; border-radius: var(--r); border: 1px solid var(--bad);
+            color: var(--bad); background: var(--panel); }
+  .banner ul { margin: 4px 0 0; padding-left: 18px; }
+
+  /* розкладка */
+  .layout { max-width: 1360px; margin: 0 auto; padding: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 20px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-content: start; min-width: 0; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; margin-bottom: 10px; }
+  h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+  @media (max-width: 1060px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 600px) { .layout { padding: 12px; } .top-inner { padding: 10px 12px; } }
+
+  /* майданчики */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .card-head b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
   .card .meta { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+  .card .actions { display: flex; gap: 8px; margin-top: auto; padding-top: 10px; }
 
+  /* таблиця НРК */
   .table-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); }
-  td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+  td.num, th.num { text-align: center; }
   tbody tr { cursor: pointer; }
-  tbody tr:hover { background: var(--soft); }
-  tbody tr.selected { background: var(--soft); box-shadow: inset 3px 0 0 var(--accent); }
+  tbody tr:hover td, tbody tr.selected td { background: var(--soft); }
+  tbody tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
   tbody tr:last-child td { border-bottom: 0; }
+  .ugv b { display: block; }
+  .ugv .muted { font-size: 12px; }
+  .empty { color: var(--muted); padding: 28px 16px; text-align: center; white-space: normal; }
 
-  .console { background: var(--console-bg); color: var(--console-fg); border-radius: 10px; padding: 12px 14px; margin: 0;
-             min-height: 120px; max-height: 380px; overflow: auto; font: 12.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+  /* консоль */
+  .console { background: var(--console-bg); color: var(--console-fg); border-radius: 10px; overflow: hidden; }
+  .console-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 14px;
+                  border-bottom: 1px solid rgba(255,255,255,.08); font: 12.5px ui-monospace, Consolas, monospace; min-height: 44px; }
+  .console-head .cmd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .console-head button { height: 26px; background: transparent; color: #ff8a80; border-color: #ff8a80; }
+  .console pre { margin: 0; padding: 12px 14px; min-height: 120px; max-height: 360px; overflow: auto;
+                 font: 12.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
 
-  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; align-self: start;
-          position: sticky; top: 72px; max-height: calc(100vh - 88px); overflow: auto; }
-  @media (max-width: 980px) { aside { position: static; max-height: none; } }
-  .detail-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
-  .detail-head .title { font-size: 18px; font-weight: 700; }
-  .step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
-  .num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  /* панель НРК */
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; align-self: start;
+          position: sticky; top: 72px; max-height: calc(100vh - 92px); overflow: auto; }
+  @media (max-width: 1060px) { aside { position: static; max-height: none; } }
+  .detail-head { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .detail-head b { font-size: 18px; }
+  .step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .step:last-child { border-bottom: 0; }
+  .step.plain { grid-template-columns: minmax(0, 1fr); }
+  .dot { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700;
          background: var(--soft); color: var(--muted); }
-  .num.done { background: var(--ok); color: #fff; }
-  .num.failed { background: var(--bad); color: #fff; }
-  .step .name { font-weight: 600; }
-  .step .note { font-size: 12.5px; color: var(--muted); margin: 2px 0 6px; overflow-wrap: anywhere; }
-  .step .row input, .step .row select { flex: 1 1 140px; }
-  .checks { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12.5px; display: grid; gap: 3px; }
-  .checks li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px; }
+  .dot.done { background: var(--ok); color: #fff; }
+  .dot.failed { background: var(--bad); color: #fff; }
+  .step-title { font-weight: 600; line-height: 26px; }
+  .note { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; overflow-wrap: anywhere; }
+  .controls { display: grid; gap: 8px; }
+  .line { display: flex; gap: 8px; align-items: center; }
+  .line > input, .line > select { flex: 1 1 auto; }
+  .line > button { flex: 0 0 auto; }
+  .reveal { font: 13px ui-monospace, Consolas, monospace; }
+  .check { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; color: var(--muted); }
+  .checks { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; }
+  .checks li { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 6px; }
   .checks .detail { color: var(--muted); overflow-wrap: anywhere; }
   .files { display: flex; flex-wrap: wrap; gap: 6px; }
-  .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
+  .files button { height: 28px; font: 12px ui-monospace, Consolas, monospace; }
 
-  dialog { width: min(900px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 0; border: 1px solid var(--line);
+  dialog { width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 0; border: 1px solid var(--line);
            border-radius: 10px; background: var(--panel); color: var(--fg); }
   dialog::backdrop { background: rgba(0, 0, 0, .45); }
   dialog header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
@@ -95,11 +126,18 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">FLU fleet<span class="muted" id="root"></span></div>
-  <div class="row">
-    <span id="inv-status" class="chip muted">загрузка…</span>
-    <button onclick="run(['check'])">Проверить inventory</button>
-    <button onclick="run(['render'])">Собрать все конфиги</button>
+  <div class="top-inner">
+    <div class="brand"><b>FLU fleet</b><span class="muted" id="root"></span></div>
+    <div class="bar">
+      <a id="simple-link" href="/"></a>
+      <span id="inv-status" class="badge muted"></span>
+      <button id="btn-check" data-cmd onclick="run(['check'])"></button>
+      <button id="btn-render" data-cmd onclick="run(['render'])"></button>
+      <div class="lang" role="group" aria-label="Language">
+        <button data-lang="uk" onclick="setLang('uk')">UK</button>
+        <button data-lang="en" onclick="setLang('en')">EN</button>
+      </div>
+    </div>
   </div>
 </header>
 <div id="errors" class="banner hidden"></div>
@@ -107,35 +145,123 @@
 <div class="layout">
   <main>
     <section>
-      <h2>Площадки</h2>
+      <div class="section-head"><h2 id="h-sites"></h2></div>
       <div id="sites" class="cards"></div>
     </section>
     <section>
-      <h2>Роботы</h2>
+      <div class="section-head"><h2 id="h-ugvs"></h2></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Робот</th><th>Площадка</th><th>Обслуживание</th><th>MikroTik</th><th>Последний тест</th></tr></thead>
+          <thead><tr id="robots-head"></tr></thead>
           <tbody id="robots"></tbody>
         </table>
       </div>
     </section>
     <section>
-      <div class="row" style="justify-content: space-between; margin-bottom: 10px;">
-        <h2 style="margin: 0;">Консоль</h2>
-        <div class="row"><span id="job-status" class="muted"></span><button id="stop" class="danger hidden" onclick="stopJob()">Остановить</button></div>
+      <div class="section-head"><h2 id="h-console"></h2></div>
+      <div class="console">
+        <div class="console-head">
+          <span class="cmd" id="job-cmd"></span>
+          <span class="bar"><span id="job-status"></span><button id="stop" class="hidden" onclick="stopJob()"></button></span>
+        </div>
+        <pre id="console"></pre>
       </div>
-      <pre id="console" class="console">Здесь появится вывод команд.</pre>
     </section>
   </main>
-  <aside id="detail"><div class="empty">Выберите робота в таблице</div></aside>
+  <aside id="detail"></aside>
 </div>
 
 <dialog id="viewer">
-  <header><b id="viewer-title"></b><button onclick="document.getElementById('viewer').close()">Закрыть</button></header>
+  <header><b id="viewer-title"></b><button id="viewer-close" onclick="document.getElementById('viewer').close()"></button></header>
   <pre id="viewer-body"></pre>
 </dialog>
 
 <script>
+const I18N = {
+  uk: {
+    inv_ok: "інвентар у порядку", inv_errors: "помилок в інвентарі: {n}", inv_errors_title: "Помилки в інвентарі",
+    check: "Перевірити", render_all: "Зібрати конфіги", sites: "Майданчики", ugvs: "НРК", console: "Консоль",
+    console_empty: "Тут з'явиться вивід команд.", console_idle: "команд ще не було", stop: "Зупинити",
+    running: "виконується… {s} с", done: "готово", failed: "помилка, код {code}",
+    kind_managed: "наш стек", kind_external: "сервер замовника", kind_hub: "сервер (команда)",
+    hub_ready: "сервер налаштовано командою", hub_pending: "сервер ще не налаштовано", simple_mode: "Простий режим",
+    step5_hub: "сервер налаштовується командою в простому режимі", ugvs_count: "НРК: {n} з {cap}", operators_count: "операторів: {n}",
+    panel: "панель", not_deployed: "сервер ще не розгорнуто", deploy: "Розгорнути", build: "Зібрати",
+    connection_files: "Файли підключення", service_tunnel: "Сервісний тунель", service_badge: "обслуговування",
+    key_present: "ключ сервера є", confirm_deploy: "Розгорнути стек майданчика {site} на {host}?",
+    confirm_deploy_svc: "Розгорнути сервісний тунель на {host}?",
+    col_ugv: "НРК", col_site: "Майданчик", col_slot: "Слот", col_service: "Сервісний тунель", col_mikrotik: "MikroTik", col_test: "Останній тест",
+    not_registered: "не зареєстровано", yes: "так", no: "ні", flashed: "залито", never: "не було", passed: "пройдено",
+    empty_ugvs: "НРК ще немає. Додайте їх у inventory/robots.yaml і натисніть «Перевірити».",
+    select_ugv: "Виберіть НРК у таблиці",
+    step1: "Реєстрація", step1_done: "майданчик {site}, слот {slot} (MAVLink SYSID {slot})", step1_todo: "видати слот і ключі, зібрати конфіги",
+    register: "Зареєструвати", rebuild: "Перезібрати конфіги",
+    step2: "Роутер MikroTik", step2_done: "конфіг залито, еталон для перевірки дрейфу знято",
+    step2_todo: "ноутбук — у LAN-порт роутера (192.168.88.1); або Netinstall з robot.rsc",
+    pwd_placeholder: "поточний пароль admin", flash: "Залити конфіг",
+    confirm_flash: "Роутер буде скинуто й перезавантажено з конфігом НРК. Продовжити?",
+    step3: "Камери", step3_note: "активуйте камери паролем НРК (SADP / ConfigTool) і ввімкніть у порти камер",
+    show_pwd: "Показати пароль", cameras_move: "Перенести на адреси НРК",
+    step4: "Польотний контролер", step4_note: "USB на стенді або через арбітр (писати через арбітр може лише власник НРК)",
+    conn_placeholder: "COM5 або tcp:сервер:порт", via_arbiter: "через арбітр", via_tunnel: "через тунель", compare: "Порівняти", write_reboot: "Записати й перезавантажити",
+    confirm_write: "Записати параметри, що відрізняються, і перезавантажити ФК?",
+    step5: "Сервер майданчика", step5_none: "спочатку реєстрація", step5_managed: "додати НРК на сервер {host}",
+    step5_external: "передати файли підключення адміністратору замовника", deploy_site: "Розгорнути {site}",
+    confirm_update: "Оновити стек майданчика {site}?",
+    step6: "Приймальний тест", step6_last: "останній: {time}", step6_todo: "потрібен увімкнений тунель пілота у WireGuard",
+    run_test: "Запустити тест", no_mikrotik: "без MikroTik",
+    move: "Переїзд на інший майданчик", move_note: "новий тунель піднімається поруч зі старим; без handshake — автовідкат",
+    move_btn: "Перенести", confirm_move: "Перенести {name} на {site}?", files: "Файли", files_none: "ще не зібрано",
+    close: "Закрити", no_connection: "немає зв'язку з fleet ui",
+    chk: { inventory: "інвентар", registration: "реєстрація", arbiter: "арбітр", mavlink: "MAVLink", params: "параметри", gps: "GPS",
+           battery: "батарея", cam1: "камера 1", cam2: "камера 2", cameras: "камери", mikrotik: "MikroTik",
+           mikrotik_config: "MikroTik: конфіг", site_tunnel: "тунель майданчика", mikrotik_drift: "MikroTik: дрейф", lte: "LTE" },
+  },
+  en: {
+    inv_ok: "inventory is fine", inv_errors: "inventory errors: {n}", inv_errors_title: "Inventory errors",
+    check: "Validate", render_all: "Build configs", sites: "Sites", ugvs: "UGVs", console: "Console",
+    console_empty: "Command output will appear here.", console_idle: "no commands yet", stop: "Stop",
+    running: "running… {s} s", done: "done", failed: "error, code {code}",
+    kind_managed: "our stack", kind_external: "customer server", kind_hub: "server (command)",
+    hub_ready: "server set up by the command", hub_pending: "server not set up yet", simple_mode: "Simple mode",
+    step5_hub: "the server is set up by a command in simple mode", ugvs_count: "UGVs: {n} of {cap}", operators_count: "operators: {n}",
+    panel: "panel", not_deployed: "server not deployed yet", deploy: "Deploy", build: "Build",
+    connection_files: "Connection files", service_tunnel: "Service tunnel", service_badge: "maintenance",
+    key_present: "server key present", confirm_deploy: "Deploy the {site} site stack to {host}?",
+    confirm_deploy_svc: "Deploy the service tunnel to {host}?",
+    col_ugv: "UGV", col_site: "Site", col_slot: "Slot", col_service: "Service tunnel", col_mikrotik: "MikroTik", col_test: "Last test",
+    not_registered: "not registered", yes: "yes", no: "no", flashed: "flashed", never: "never", passed: "passed",
+    empty_ugvs: "No UGVs yet. Add them to inventory/robots.yaml and press Validate.",
+    select_ugv: "Select a UGV in the table",
+    step1: "Registration", step1_done: "site {site}, slot {slot} (MAVLink SYSID {slot})", step1_todo: "assign a slot and keys, build configs",
+    register: "Register", rebuild: "Rebuild configs",
+    step2: "MikroTik router", step2_done: "config flashed, drift reference taken",
+    step2_todo: "laptop into a router LAN port (192.168.88.1); or Netinstall with robot.rsc",
+    pwd_placeholder: "current admin password", flash: "Flash config",
+    confirm_flash: "The router will be reset and rebooted with the UGV config. Continue?",
+    step3: "Cameras", step3_note: "activate the cameras with the UGV password (SADP / ConfigTool) and plug them into the camera ports",
+    show_pwd: "Show password", cameras_move: "Move to UGV addresses",
+    step4: "Flight controller", step4_note: "USB at the bench or via the arbiter (only the UGV owner can write via the arbiter)",
+    conn_placeholder: "COM5 or tcp:server:port", via_arbiter: "via arbiter", via_tunnel: "via tunnel", compare: "Compare", write_reboot: "Write and reboot",
+    confirm_write: "Write the differing parameters and reboot the FC?",
+    step5: "Site server", step5_none: "register first", step5_managed: "add the UGV to server {host}",
+    step5_external: "send the connection files to the customer's administrator", deploy_site: "Deploy {site}",
+    confirm_update: "Update the {site} site stack?",
+    step6: "Acceptance test", step6_last: "last run: {time}", step6_todo: "needs the pilot tunnel enabled in WireGuard",
+    run_test: "Run test", no_mikrotik: "skip MikroTik",
+    move: "Move to another site", move_note: "the new tunnel comes up next to the old one; no handshake means auto-rollback",
+    move_btn: "Move", confirm_move: "Move {name} to {site}?", files: "Files", files_none: "not built yet",
+    close: "Close", no_connection: "no connection to fleet ui",
+    chk: { inventory: "inventory", registration: "registration", arbiter: "arbiter", mavlink: "MAVLink", params: "parameters", gps: "GPS",
+           battery: "battery", cam1: "camera 1", cam2: "camera 2", cameras: "cameras", mikrotik: "MikroTik",
+           mikrotik_config: "MikroTik: config", site_tunnel: "site tunnel", mikrotik_drift: "MikroTik: drift", lte: "LTE" },
+  },
+};
+
+let lang = "uk";
+try { lang = localStorage.getItem("fleet-lang") || "uk"; } catch (e) {}
+const t = (key, vars = {}) => (I18N[lang][key] ?? I18N.uk[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+
 const h = (tag, attrs = {}, ...children) => {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -152,11 +278,12 @@ const h = (tag, attrs = {}, ...children) => {
 let state = null;
 let selected = Number((location.hash.match(/robot-(\d+)/) || [])[1]) || null;
 let polling = null;
-const inputs = {};  // введённые значения переживают перерисовку
+const inputs = {};  // введені значення переживають перемальовування
 
 async function api(path, body) {
-  const options = body === undefined ? {} : {
-    method: "POST", headers: { "Content-Type": "application/json", "X-Fleet": "1" }, body: JSON.stringify(body),
+  const headers = { "X-Lang": lang };
+  const options = body === undefined ? { headers } : {
+    method: "POST", headers: { ...headers, "Content-Type": "application/json", "X-Fleet": "1" }, body: JSON.stringify(body),
   };
   const r = await fetch(path, options);
   const data = await r.json().catch(() => ({}));
@@ -164,7 +291,15 @@ async function api(path, body) {
   return data;
 }
 
-// --- команды -------------------------------------------------------------------
+function setLang(next) {
+  lang = next;
+  try { localStorage.setItem("fleet-lang", lang); } catch (e) {}
+  refresh(true);
+}
+
+// --- команди -------------------------------------------------------------------
+
+const busy = () => Boolean(state && state.job && state.job.running);
 
 async function run(args) {
   try {
@@ -186,7 +321,7 @@ function pollJob() {
     const job = await api(`/api/jobs/${state.job.id}`);
     showJob(job);
     if (job.running) pollJob();
-    else refresh();
+    else refresh(true);
   }, 700);
 }
 
@@ -194,22 +329,30 @@ function showJob(job) {
   if (!state) state = {};
   state.job = job;
   const con = document.getElementById("console");
-  const atBottom = con.scrollHeight - con.scrollTop - con.clientHeight < 40;
-  con.textContent = `$ ${job.command}\n${job.output}`;
-  if (atBottom || job.running) con.scrollTop = con.scrollHeight;
   const status = document.getElementById("job-status");
-  if (job.running) { status.textContent = `выполняется… ${job.seconds} с`; status.className = "warn"; }
-  else if (job.code === 0) { status.textContent = "готово"; status.className = "ok"; }
-  else { status.textContent = `ошибка, код ${job.code}`; status.className = "bad"; }
+  if (!job) {
+    document.getElementById("job-cmd").textContent = t("console_idle");
+    con.textContent = t("console_empty");
+    status.textContent = "";
+    document.getElementById("stop").classList.add("hidden");
+    return;
+  }
+  const atBottom = con.scrollHeight - con.scrollTop - con.clientHeight < 40;
+  document.getElementById("job-cmd").textContent = "$ " + job.command;
+  con.textContent = job.output || "…";
+  if (atBottom || job.running) con.scrollTop = con.scrollHeight;
+  if (job.running) { status.textContent = t("running", { s: job.seconds }); status.className = "warn"; }
+  else if (job.code === 0) { status.textContent = t("done"); status.className = "ok"; }
+  else { status.textContent = t("failed", { code: job.code }); status.className = "bad"; }
   document.getElementById("stop").classList.toggle("hidden", !job.running);
-  document.querySelectorAll("[data-cmd]").forEach((b) => (b.disabled = job.running));
+  document.querySelectorAll("[data-cmd]").forEach((b) => (b.disabled = job.running || b.hasAttribute("data-off")));
 }
 
 function cmd(label, args, opts = {}) {
   return h("button", {
     class: opts.primary ? "primary" : opts.danger ? "danger" : null,
-    "data-cmd": "", disabled: opts.disabled || (state.job && state.job.running),
-    title: "fleet " + (typeof args === "function" ? "…" : args.join(" ")),
+    "data-cmd": "", "data-off": opts.disabled || null, disabled: opts.disabled || busy(),
+    title: typeof args === "function" ? null : "fleet " + args.join(" "),
     onclick: () => {
       const a = typeof args === "function" ? args() : args;
       if (!a) return;
@@ -220,90 +363,119 @@ function cmd(label, args, opts = {}) {
 }
 
 async function viewFile(path) {
-  const r = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+  const r = await fetch(`/api/file?path=${encodeURIComponent(path)}`, { headers: { "X-Lang": lang } });
   document.getElementById("viewer-title").textContent = path;
   document.getElementById("viewer-body").textContent = await r.text();
   document.getElementById("viewer").showModal();
 }
 
-// --- отрисовка -----------------------------------------------------------------
+// --- відмальовування -----------------------------------------------------------
+
+function renderChrome() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-lang]").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  document.getElementById("simple-link").textContent = t("simple_mode");
+  document.getElementById("btn-check").textContent = t("check");
+  document.getElementById("btn-render").textContent = t("render_all");
+  document.getElementById("h-sites").textContent = t("sites");
+  document.getElementById("h-ugvs").textContent = t("ugvs");
+  document.getElementById("h-console").textContent = t("console");
+  document.getElementById("stop").textContent = t("stop");
+  document.getElementById("viewer-close").textContent = t("close");
+  document.getElementById("robots-head").replaceChildren(
+    h("th", {}, t("col_ugv")), h("th", {}, t("col_site")), h("th", { class: "num" }, t("col_slot")),
+    h("th", {}, t("col_service")), h("th", {}, t("col_mikrotik")), h("th", {}, t("col_test")));
+}
 
 function renderHeader() {
-  document.getElementById("root").textContent = state.root;
+  const root = document.getElementById("root");
+  root.textContent = state.root.split(/[\\/]/).filter(Boolean).pop() || state.root;
+  root.title = state.root;
   const chip = document.getElementById("inv-status");
   const banner = document.getElementById("errors");
   const errors = state.fatal ? [state.fatal] : state.errors;
-  chip.textContent = errors.length ? `inventory: ошибок ${errors.length}` : "inventory в порядке";
-  chip.className = "chip " + (errors.length ? "bad" : "ok");
+  chip.textContent = errors.length ? t("inv_errors", { n: errors.length }) : t("inv_ok");
+  chip.className = "badge " + (errors.length ? "bad" : "ok");
   banner.classList.toggle("hidden", !errors.length);
-  banner.replaceChildren(h("b", {}, "Ошибки в inventory"), h("ul", {}, errors.map((e) => h("li", {}, e))));
+  banner.replaceChildren(h("b", {}, t("inv_errors_title")), h("ul", {}, errors.map((e) => h("li", {}, e))));
+}
+
+function siteCard(s) {
+  const managed = s.kind === "managed";
+  const hub = s.kind === "hub";
+  const actions = hub
+    ? h("a", { href: "/" }, t("simple_mode"))
+    : managed
+      ? [cmd(t("deploy"), ["deploy-server", "--site", s.name], { primary: true, confirm: t("confirm_deploy", { site: s.name, host: s.host }) }),
+         cmd(t("build"), ["render", "--site", s.name], { disabled: !s.has_key })]
+      : cmd(t("connection_files"), ["kit", "--site", s.name], { primary: true });
+  return h("div", { class: "card" },
+    h("div", { class: "card-head" },
+      h("b", {}, s.name), h("span", { class: "badge muted" }, t(`kind_${s.kind}`))),
+    h("div", { class: "meta" }, [s.customer, s.has_key || !hub ? s.endpoint : null].filter(Boolean).join(" · ")),
+    h("div", { class: "meta" }, t("ugvs_count", { n: s.robots, cap: s.capacity }) + (managed || hub ? " · " + t("operators_count", { n: s.operators.length }) : "")),
+    managed && (s.has_key
+      ? h("div", { class: "meta" }, t("panel") + ": ", h("a", { href: s.panel, target: "_blank" }, s.panel))
+      : h("div", { class: "meta warn" }, t("not_deployed"))),
+    hub && h("div", { class: "meta " + (s.has_key ? "" : "warn") }, s.has_key ? t("hub_ready") : t("hub_pending")),
+    h("div", { class: "actions" }, actions));
 }
 
 function renderSites() {
-  const cards = state.sites.map((s) => {
-    const managed = s.kind === "managed";
-    return h("div", { class: "card" },
-      h("div", { class: "row", style: "justify-content: space-between" },
-        h("span", { class: "title" }, s.name),
-        h("span", { class: "chip muted" }, managed ? "наш стек" : "сервер заказчика")),
-      h("div", { class: "meta" }, `${s.customer || "—"} · ${s.endpoint}`),
-      h("div", { class: "meta" }, `роботов ${s.robots} из ${s.capacity}` + (managed ? ` · операторов ${s.operators.length}` : "")),
-      managed && h("div", { class: "meta " + (s.has_key ? "" : "warn") },
-        s.has_key ? h("span", {}, "панель: ", h("a", { href: s.panel, target: "_blank" }, s.panel)) : "сервер ещё не развёрнут"),
-      h("div", { class: "row" },
-        managed
-          ? [cmd("Развернуть", ["deploy-server", "--site", s.name], { primary: true, confirm: `Развернуть стек площадки ${s.name} на ${s.host}?` }),
-             cmd("Собрать", ["render", "--site", s.name], { disabled: !s.has_key })]
-          : cmd("Пакет заказчику", ["kit", "--site", s.name], { primary: true })));
-  });
+  const cards = state.sites.map(siteCard);
   if (state.service) {
     const svc = state.service;
     cards.push(h("div", { class: "card" },
-      h("div", { class: "row", style: "justify-content: space-between" },
-        h("span", { class: "title" }, "Сервисный туннель"), h("span", { class: "chip muted" }, "обслуживание")),
+      h("div", { class: "card-head" }, h("b", {}, t("service_tunnel")), h("span", { class: "badge muted" }, t("service_badge"))),
       h("div", { class: "meta" }, svc.endpoint),
-      h("div", { class: "meta " + (svc.has_key ? "" : "warn") }, svc.has_key ? "ключ сервера есть" : "сервер ещё не развёрнут"),
-      h("div", { class: "row" }, cmd("Развернуть", ["deploy-server", "--service"], { confirm: `Развернуть сервисный туннель на ${svc.host}?` }))));
+      h("div", { class: "meta " + (svc.has_key ? "" : "warn") }, svc.has_key ? t("key_present") : t("not_deployed")),
+      h("div", { class: "actions" }, cmd(t("deploy"), ["deploy-server", "--service"], { confirm: t("confirm_deploy_svc", { host: svc.host }) }))));
   }
   document.getElementById("sites").replaceChildren(...cards);
 }
 
 function reportCell(rep) {
-  if (!rep) return h("span", { class: "muted" }, "не было");
+  if (!rep) return h("span", { class: "muted" }, t("never"));
   const cls = rep.fail ? "bad" : rep.warn ? "warn" : "ok";
-  const text = rep.fail ? `FAIL ${rep.fail}` : rep.warn ? `WARN ${rep.warn}` : "пройден";
-  return h("span", {}, h("span", { class: "chip " + cls }, text), " ", h("span", { class: "muted" }, rep.time));
+  const text = rep.fail ? `FAIL ${rep.fail}` : rep.warn ? `WARN ${rep.warn}` : t("passed");
+  return h("span", { class: "bar" }, h("span", { class: "badge " + cls }, text), h("span", { class: "muted" }, rep.time));
 }
 
 function renderRobots() {
-  const rows = state.robots.map((r) => h("tr", {
+  const body = document.getElementById("robots");
+  if (!state.robots.length) {
+    body.replaceChildren(h("tr", {}, h("td", { colspan: 6, class: "empty" }, t("empty_ugvs"))));
+    return;
+  }
+  body.replaceChildren(...state.robots.map((r) => h("tr", {
       class: r.id === selected ? "selected" : null,
       onclick: () => { selected = r.id; location.hash = `robot-${r.id}`; render(); },
     },
-    h("td", {}, h("b", {}, r.name), h("div", { class: "muted" }, r.serial)),
-    h("td", {}, r.site || "—", r.provisioned ? h("span", { class: "muted" }, ` · slot ${r.slot}`) : h("div", { class: "warn" }, "не зарегистрирован")),
-    h("td", {}, r.service_tunnel ? "туннель к нам" : h("span", { class: "muted" }, "нет")),
-    h("td", {}, r.baseline ? h("span", { class: "ok" }, "залит") : h("span", { class: "muted" }, "—")),
-    h("td", {}, reportCell(r.report))));
-  document.getElementById("robots").replaceChildren(...rows);
+    h("td", { class: "ugv" }, h("b", {}, r.name), h("span", { class: "muted" }, r.serial)),
+    h("td", {}, r.site || "—", !r.provisioned && h("div", { class: "warn" }, t("not_registered"))),
+    h("td", { class: "num" }, r.slot ?? "—"),
+    h("td", {}, r.service_tunnel ? t("yes") : h("span", { class: "muted" }, t("no"))),
+    h("td", {}, r.baseline ? h("span", { class: "badge ok" }, t("flashed")) : h("span", { class: "muted" }, "—")),
+    h("td", {}, reportCell(r.report)))));
 }
 
-function checkStatus(rep, ...names) {
+function checkStatus(rep, ...keys) {
   if (!rep) return null;
-  const found = rep.checks.filter((c) => names.includes(c.name));
+  const found = rep.checks.filter((c) => keys.includes(c.key));
   if (!found.length) return null;
   if (found.some((c) => c.status === "FAIL")) return "failed";
   return found.every((c) => c.status === "PASS") ? "done" : null;
 }
 
-function step(n, status, name, note, ...controls) {
+function step(n, status, title, note, ...controls) {
   return h("div", { class: "step" },
-    h("div", { class: "num " + (status || "") }, status === "done" ? "✓" : status === "failed" ? "!" : String(n)),
-    h("div", {}, h("div", { class: "name" }, name), note && h("div", { class: "note" }, note), ...controls));
+    h("div", { class: "dot " + (status || "") }, status === "done" ? "✓" : status === "failed" ? "!" : String(n)),
+    h("div", {}, h("div", { class: "step-title" }, title), note && h("div", { class: "note" }, note),
+      h("div", { class: "controls" }, ...controls)));
 }
 
 function field(key, attrs) {
-  const el = h("input", { ...attrs, value: inputs[key] ?? attrs.value ?? "" });
+  const el = h("input", { type: "text", ...attrs, value: inputs[key] ?? attrs.value ?? "" });
   el.addEventListener("input", () => (inputs[key] = el.value));
   return el;
 }
@@ -311,111 +483,107 @@ function field(key, attrs) {
 function renderDetail() {
   const aside = document.getElementById("detail");
   const r = state.robots.find((x) => x.id === selected);
-  if (!r) { aside.replaceChildren(h("div", { class: "empty" }, "Выберите робота в таблице")); return; }
+  if (!r) { aside.replaceChildren(h("div", { class: "empty" }, t("select_ugv"))); return; }
   const id = String(r.id);
   const site = state.sites.find((s) => s.name === r.site);
   const managed = site && site.kind === "managed";
+  const hub = site && site.kind === "hub";
   const rep = r.report;
   const off = !r.provisioned;
 
-  // 1. регистрация
   const siteSelect = h("select", {}, state.sites.map((s) => h("option", { value: s.name, selected: s.name === r.site }, s.name)));
-  const s1 = step(1, r.provisioned ? "done" : null, "Регистрация",
-    r.provisioned ? `площадка ${r.site}, slot ${r.slot} (MAVLink SYSID ${r.slot})` : "выдать slot и ключи, собрать конфиги",
-    h("div", { class: "row" }, !r.provisioned && siteSelect,
-      cmd(r.provisioned ? "Пересобрать конфиги" : "Зарегистрировать",
+  const s1 = step(1, r.provisioned ? "done" : null, t("step1"),
+    r.provisioned ? t("step1_done", { site: r.site, slot: r.slot }) : t("step1_todo"),
+    h("div", { class: "line" }, !r.provisioned && siteSelect,
+      cmd(r.provisioned ? t("rebuild") : t("register"),
         () => r.provisioned ? ["provision", "--id", id] : ["provision", "--id", id, "--site", siteSelect.value], { primary: !r.provisioned })));
 
-  // 2. MikroTik
-  const s2 = step(2, r.baseline ? "done" : null, "MikroTik",
-    r.baseline ? "конфиг залит, эталон для проверки дрейфа снят" : "Netinstall с robot.rsc или сброс по SSH на стенде (192.168.88.1)",
-    h("div", { class: "row" },
-      field(`pwd-${id}`, { type: "password", placeholder: "текущий пароль admin" }),
-      cmd("Залить конфиг", () => ["bench", "mikrotik", "--id", id, "--password", inputs[`pwd-${id}`] || ""],
-        { disabled: off, confirm: "Роутер будет сброшен и перезагружен с конфигом робота. Продолжить?" })));
+  const s2 = step(2, r.baseline ? "done" : null, t("step2"), r.baseline ? t("step2_done") : t("step2_todo"),
+    h("div", { class: "line" },
+      field(`pwd-${id}`, { type: "password", placeholder: t("pwd_placeholder") }),
+      cmd(t("flash"), () => ["bench", "mikrotik", "--id", id, "--password", inputs[`pwd-${id}`] || ""],
+        { disabled: off, primary: r.provisioned && !r.baseline, confirm: t("confirm_flash") })));
 
-  // 3. камеры
-  const pwdBox = h("span", { class: "muted" });
-  const s3 = step(3, checkStatus(rep, "камера cam1", "камера cam2"), "Камеры",
-    "активируйте камеры паролем робота (SADP / ConfigTool) и включите в порты камер",
-    h("div", { class: "row" },
+  const pwdBox = h("span", { class: "reveal" });
+  const s3 = step(3, checkStatus(rep, "cam1", "cam2"), t("step3"), t("step3_note"),
+    h("div", { class: "line" },
       h("button", { disabled: off, onclick: async () => {
         try { pwdBox.textContent = (await api(`/api/camera-password?id=${id}`)).password; } catch (e) { pwdBox.textContent = e.message; }
-      } }, "Показать пароль"), pwdBox,
-      cmd("Перевести на адреса робота", ["bench", "cameras", "--id", id], { disabled: off })));
+      } }, t("show_pwd")), pwdBox),
+    h("div", { class: "line" }, cmd(t("cameras_move"), ["bench", "cameras", "--id", id], { disabled: off })));
 
-  // 4. полётный контроллер
-  const options = [...state.ports.map((p) => ({ value: p.device, label: `${p.device} — ${p.description}` }))];
-  if (r.mavlink) options.push({ value: r.mavlink, label: `через арбитр (${r.mavlink})` });
-  const conn = field(`conn-${id}`, { placeholder: "COM5 или tcp:сервер:порт", list: `ports-${id}`, value: options[0]?.value || "" });
-  const s4 = step(4, checkStatus(rep, "параметры"), "Полётный контроллер",
-    "USB на стенде или через арбитр (писать через арбитр может только владелец робота)",
+  const options = state.ports.map((p) => ({ value: p.device, label: `${p.device} — ${p.description}` }));
+  if (r.mavlink) options.push({ value: r.mavlink, label: `${t(hub ? "via_tunnel" : "via_arbiter")} (${r.mavlink})` });
+  const conn = field(`conn-${id}`, { placeholder: t("conn_placeholder"), list: `ports-${id}`, value: options[0]?.value || "" });
+  const s4 = step(4, checkStatus(rep, "params"), t("step4"), t("step4_note"),
     h("datalist", { id: `ports-${id}` }, options.map((o) => h("option", { value: o.value }, o.label))),
-    h("div", { class: "row" }, conn),
-    h("div", { class: "row", style: "margin-top: 6px" },
-      cmd("Сравнить", () => conn.value && ["fc", "--id", id, "--connect", conn.value], { disabled: off }),
-      cmd("Залить и перезагрузить", () => conn.value && ["fc", "--id", id, "--connect", conn.value, "--push", "--yes", "--reboot"],
-        { disabled: off, confirm: "Записать отличающиеся параметры и перезагрузить ФК?" })));
+    conn,
+    h("div", { class: "line" },
+      cmd(t("compare"), () => conn.value && ["fc", "--id", id, "--connect", conn.value], { disabled: off }),
+      cmd(t("write_reboot"), () => conn.value && ["fc", "--id", id, "--connect", conn.value, "--push", "--yes", "--reboot"],
+        { disabled: off, confirm: t("confirm_write") })));
 
-  // 5. сервер
-  const s5 = step(5, managed ? checkStatus(rep, "арбитр") : null, "Сервер площадки",
-    !site ? "сначала регистрация" : managed ? `добавить робота на сервер ${site.host}` : "передать пакет администратору заказчика",
-    h("div", { class: "row" }, site && (managed
-      ? cmd(`Развернуть ${site.name}`, ["deploy-server", "--site", site.name], { disabled: off, confirm: `Обновить стек площадки ${site.name}?` })
-      : cmd("Собрать пакет заказчику", ["kit", "--site", site.name], { disabled: off }))));
+  const s5 = step(5, managed ? checkStatus(rep, "arbiter") : null, t("step5"),
+    !site ? t("step5_none") : hub ? t("step5_hub") : managed ? t("step5_managed", { host: site.host }) : t("step5_external"),
+    site && h("div", { class: "line" }, hub
+      ? h("a", { href: "/" }, t("simple_mode"))
+      : managed
+        ? cmd(t("deploy_site", { site: site.name }), ["deploy-server", "--site", site.name], { disabled: off, confirm: t("confirm_update", { site: site.name }) })
+        : cmd(t("connection_files"), ["kit", "--site", site.name], { disabled: off })));
 
-  // 6. приёмка
   const noMt = h("input", { type: "checkbox" });
-  const s6 = step(6, rep ? (rep.fail ? "failed" : "done") : null, "Приёмочный тест",
-    rep ? `последний: ${rep.time}` : "нужен WireGuard площадки на этой станции (оператор test-bench)",
-    h("div", { class: "row" },
-      cmd("Запустить тест", () => ["test", "--id", id, ...(noMt.checked ? ["--no-mikrotik"] : [])], { primary: true, disabled: off }),
-      h("label", { class: "check muted" }, noMt, "без MikroTik")),
+  const s6 = step(6, rep ? (rep.fail ? "failed" : "done") : null, t("step6"),
+    rep ? t("step6_last", { time: rep.time }) : t("step6_todo"),
+    h("div", { class: "line" },
+      cmd(t("run_test"), () => ["test", "--id", id, ...(noMt.checked ? ["--no-mikrotik"] : [])], { primary: true, disabled: off }),
+      h("label", { class: "check" }, noMt, t("no_mikrotik"))),
     rep && h("ul", { class: "checks" }, rep.checks.map((c) => h("li", {},
       h("span", { class: c.status === "PASS" ? "ok" : c.status === "FAIL" ? "bad" : c.status === "WARN" ? "warn" : "muted" },
         c.status === "PASS" ? "OK" : c.status),
-      h("span", {}, c.name, c.detail && h("div", { class: "detail" }, c.detail))))));
+      h("span", {}, I18N[lang].chk[c.key] || c.name, c.detail && h("div", { class: "detail" }, c.detail))))));
 
-  // переезд и файлы
   const targets = state.sites.filter((s) => s.name !== r.site);
   const target = h("select", {}, targets.map((s) => h("option", { value: s.name }, s.name)));
-  const move = h("div", { class: "step", style: "grid-template-columns: 1fr" },
-    h("div", {}, h("div", { class: "name" }, "Переезд на другую площадку"),
-      h("div", { class: "note" }, "новый туннель поднимается рядом со старым, без handshake — автооткат"),
-      h("div", { class: "row" }, target,
-        cmd("Перевезти", () => ["move", "--id", id, "--to", target.value, "--yes"],
-          { disabled: off || !targets.length, confirm: `Перевезти ${r.name} на ${target.value}?` }))));
-  const files = h("div", { class: "step", style: "grid-template-columns: 1fr" },
-    h("div", {}, h("div", { class: "name" }, "Файлы"),
+  const move = h("div", { class: "step plain" },
+    h("div", {}, h("div", { class: "step-title" }, t("move")), h("div", { class: "note" }, t("move_note")),
+      h("div", { class: "line" }, target,
+        cmd(t("move_btn"), () => ["move", "--id", id, "--to", target.value, "--yes"],
+          { disabled: off || !targets.length, confirm: t("confirm_move", { name: r.name, site: target.value }) }))));
+  const files = h("div", { class: "step plain" },
+    h("div", {}, h("div", { class: "step-title" }, t("files")),
       r.files.length
         ? h("div", { class: "files" }, r.files.map((f) => h("button", { onclick: () => viewFile(f) }, f.split("/").pop())))
-        : h("div", { class: "note" }, "ещё не собраны")));
+        : h("div", { class: "note" }, t("files_none"))));
 
   aside.replaceChildren(
-    h("div", { class: "detail-head" },
-      h("span", { class: "title" }, r.name),
-      h("span", { class: "muted" }, `${r.serial} · ${r.platform}`)),
+    h("div", { class: "detail-head" }, h("b", {}, r.name), h("span", { class: "muted" }, `${r.serial} · ${r.platform}`)),
     s1, s2, s3, s4, s5, s6, move, files);
 }
 
 function render() {
+  renderChrome();
   renderHeader();
   renderSites();
   renderRobots();
   renderDetail();
-  if (state.job) showJob(state.job);
+  showJob(state.job);
 }
 
-async function refresh() {
+async function refresh(force = false) {
   try {
+    // Не перемальовуємо сторінку під рукою: людина саме щось вводить
     const active = document.activeElement;
-    if (active && ["INPUT", "SELECT"].includes(active.tagName) && document.getElementById("detail").contains(active)) return;
+    const typing = active && (active.tagName === "SELECT" || (active.tagName === "INPUT" && active.type !== "checkbox"));
+    if (typing && !force) return;
     state = await api("/api/state");
+    if (!selected && state.robots.length) selected = state.robots[0].id;
     render();
-    if (state.job && state.job.running) pollJob();
+    if (busy()) pollJob();
   } catch (e) {
-    document.getElementById("inv-status").textContent = "нет связи с fleet ui";
-    document.getElementById("inv-status").className = "chip bad";
+    renderChrome();
+    const chip = document.getElementById("inv-status");
+    chip.textContent = t("no_connection");
+    chip.className = "badge bad";
   }
 }
 
@@ -424,6 +592,7 @@ window.addEventListener("hashchange", () => {
   if (state) render();
 });
 
+renderChrome();
 refresh();
 setInterval(refresh, 10000);
 </script>
