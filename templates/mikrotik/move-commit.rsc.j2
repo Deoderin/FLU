@@ -1,0 +1,9 @@
+{#- Переезд, шаг 2: новый туннель поднялся — подтвердить его и убрать старую площадку.
+    Сначала снимаем pending (после этого автооткат ничего не удалит), потом удаляем старое. -#}
+{% from "mikrotik/_site.rsc.j2" import remove_tagged, retag %}
+# fleet move commit: {{ robot.name }} {{ old_site }} -> {{ new_site }}
+{{ retag(pending_tag, final_tag) }}
+/system script remove [find name="fleet-rollback-{{ new_site }}"]
+{{ remove_tagged(old_tag) }}
+/system script set [find name=fleet-version] source="# {{ fingerprint }}" comment="fleet {{ fingerprint }}"
+:log info "fleet: moved to {{ new_site }}"

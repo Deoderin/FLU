@@ -1,0 +1,11 @@
+# fleet: {{ title }} - generated, do not edit
+[Interface]
+PrivateKey = {{ private_key }}
+Address = {{ address }}/32
+MTU = {{ mtu }}
+
+[Peer]
+PublicKey = {{ server_pubkey }}
+Endpoint = {{ endpoint }}
+AllowedIPs = {{ allowed }}
+PersistentKeepalive = 25

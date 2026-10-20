@@ -1,0 +1,50 @@
+# Ревизии железа. Всё, что одинаково у роботов одной ревизии, живёт здесь,
+# а не в шаблонах: порты MikroTik, способ подключения ФК, камеры, батарея.
+#
+# Внутренняя сеть робота одинакова на всех роботах (см. README):
+#   192.168.88.1   MikroTik
+#   192.168.88.2   полётный контроллер / сетевой адаптер ФК
+#   192.168.88.11  камера 1
+#   192.168.88.12  камера 2
+#   192.168.88.100-199  DHCP (стендовый ноутбук и прочее)
+
+platforms:
+  flu-v1:
+    description: Шасси 4 x 1 кВт, ArduPilot Rover, MikroTik, 2 IP-камеры, LTE-модем
+
+    # WAN: модем-роутер на ether1 (DHCP) или USB/miniPCIe-модем в самом MikroTik
+    wan: {type: ethernet, interface: ether1}
+    # wan: {type: lte, interface: lte1, apn: internet}
+
+    # Какое устройство в какой порт MikroTik. Порты камер важны: по ним
+    # fleet bench cameras различает камеры с одинаковым заводским IP.
+    ports: {fc: ether2, cam1: ether3, cam2: ether4, bench: ether5}
+
+    fc:
+      # serial-bridge — UART ФК через сетевой адаптер (адаптер в режиме TCP-сервера на 192.168.88.2)
+      # ardupilot-net — Ethernet в самом ФК (Pixhawk 6X, CubeRed и т.п.), ArduPilot 4.5+
+      link: serial-bridge
+      mavlink_port: 5760              # TCP-порт MAVLink на 192.168.88.2
+      serial: {port: 2, baud: 115}    # SERIALn и код скорости ArduPilot (115 = 115200), для serial-bridge
+      # Имена параметров MAVLink в прошивке:
+      #   legacy — SYSID_THISMAV / SYSID_MYGCS / SYSID_ENFORCE (ArduPilot до 4.6 включительно)
+      #   mav    — MAV_SYSID / MAV_GCS_SYSID / MAV_OPTIONS (свежие прошивки)
+      param_names: legacy
+
+    failsafe:
+      gcs_timeout_s: 5      # FS_GCS_TIMEOUT: сколько секунд без heartbeat от владельца до failsafe
+      action: 2             # FS_ACTION: 2 = Hold
+
+    cameras:
+      vendor: hikvision     # hikvision | dahua
+      factory_ip: 192.168.1.64
+      factory_user: admin
+      # Новые камеры требуют активации (задать пароль) через SADP / ConfigTool.
+      # Активируйте их паролем, который выдал fleet provision, тогда скрипт сам сменит IP.
+      rtsp_user: admin
+      rtsp_path: /Streaming/Channels/102   # дополнительный поток: он легче для LTE
+      # dahua: /cam/realmonitor?channel=1&subtype=1
+
+    battery: {min_v: 42.0, max_v: 58.8}   # для приёмочного теста
+
+    modes: {hold: 4}        # номер режима HOLD в ArduPilot Rover

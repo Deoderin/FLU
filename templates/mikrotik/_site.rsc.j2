@@ -1,0 +1,38 @@
+{#- Блок площадки на MikroTik: туннель, адрес, netmap и списки доступа.
+    Все объекты помечены comment=tag, поэтому площадку можно целиком удалить
+    или «подтвердить» (переезд: tag "fleet-site:X pending" -> "fleet-site:X").
+    Правила файрвола ссылаются на списки fleet-sites / fleet-sources / fleet-mgmt,
+    поэтому при добавлении площадки их порядок трогать не нужно.
+    Весь вывод — только ASCII: RouterOS плохо переносит UTF-8. -#}
+
+{% macro site_block(s) -%}
+/interface wireguard add name={{ s.iface }} listen-port={{ s.listen_port }} mtu={{ s.mtu }} private-key="{{ s.private_key }}" comment="{{ s.tag }}"
+/interface wireguard peers add interface={{ s.iface }} public-key="{{ s.server_pubkey }}" endpoint-address={{ s.endpoint_host }} endpoint-port={{ s.endpoint_port }} allowed-address={{ s.tunnel_net }} persistent-keepalive=25s comment="{{ s.tag }}"
+/ip address add address={{ s.robot_ip }}/{{ s.prefix }} interface={{ s.iface }} comment="{{ s.tag }}"
+/interface list member add list=fleet-sites interface={{ s.iface }} comment="{{ s.tag }}"
+/ip firewall nat add chain=dstnat in-interface={{ s.iface }} dst-address={{ s.lan_block }} action=netmap to-addresses={{ s.lan_mapped }} comment="{{ s.tag }}"
+{% for src in s.sources %}
+/ip firewall address-list add list=fleet-sources address={{ src }} comment="{{ s.tag }}"
+{% endfor %}
+{% for src in s.mgmt %}
+/ip firewall address-list add list=fleet-mgmt address={{ src }} comment="{{ s.tag }}"
+{% endfor %}
+{%- endmacro %}
+
+{% macro remove_tagged(tag) -%}
+/ip firewall nat remove [find comment="{{ tag }}"]
+/ip firewall address-list remove [find comment="{{ tag }}"]
+/interface list member remove [find comment="{{ tag }}"]
+/ip address remove [find comment="{{ tag }}"]
+/interface wireguard peers remove [find comment="{{ tag }}"]
+/interface wireguard remove [find comment="{{ tag }}"]
+{%- endmacro %}
+
+{% macro retag(old, new) -%}
+/interface wireguard set [find comment="{{ old }}"] comment="{{ new }}"
+/interface wireguard peers set [find comment="{{ old }}"] comment="{{ new }}"
+/ip address set [find comment="{{ old }}"] comment="{{ new }}"
+/interface list member set [find comment="{{ old }}"] comment="{{ new }}"
+/ip firewall nat set [find comment="{{ old }}"] comment="{{ new }}"
+/ip firewall address-list set [find comment="{{ old }}"] comment="{{ new }}"
+{%- endmacro %}

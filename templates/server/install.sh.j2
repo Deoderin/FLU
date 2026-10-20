@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# fleet: install/update {{ title }} - run by `fleet deploy-server`, safe to re-run.
+set -euo pipefail
+cd "$(dirname "$0")"
+IFACE={{ iface }}
+
+need() { command -v "$1" >/dev/null 2>&1; }
+export DEBIAN_FRONTEND=noninteractive
+
+if ! need wg || ! need iptables; then
+  apt-get update -q
+  apt-get install -yq wireguard-tools iptables
+fi
+{% if with_stack %}
+if ! need docker; then
+  curl -fsSL https://get.docker.com | sh   # official Docker install script
+fi
+{% endif %}
+
+install -m 600 "$IFACE.conf" "/etc/wireguard/$IFACE.conf"
+if systemctl is-active --quiet "wg-quick@$IFACE"; then
+  # Apply peer changes without dropping live tunnels.
+  # (Address / ListenPort / PostUp changes need: systemctl restart wg-quick@$IFACE)
+  wg syncconf "$IFACE" <(wg-quick strip "$IFACE")
+else
+  systemctl enable --now "wg-quick@$IFACE"
+fi
+{% if with_stack %}
+
+mkdir -p state
+docker compose up -d --build --remove-orphans
+{% endif %}
+
+echo "fleet: {{ title }} - OK"

@@ -1,0 +1,28 @@
+# fleet: service tunnel hub - generated, do not edit.
+# Engineers ({{ engineers_net }}) may reach robots; robots may not reach anyone.
+[Interface]
+Address = {{ server_ip }}/{{ prefix }}
+ListenPort = {{ port }}
+PrivateKey = {{ private_key }}
+MTU = {{ mtu }}
+PostUp = sysctl -w net.ipv4.ip_forward=1
+PostUp = iptables -I FORWARD -i %i -j DROP
+PostUp = iptables -I FORWARD -i %i -o %i -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+PostUp = iptables -I FORWARD -i %i -o %i -s {{ engineers_net }} -j ACCEPT
+PostDown = iptables -D FORWARD -i %i -o %i -s {{ engineers_net }} -j ACCEPT
+PostDown = iptables -D FORWARD -i %i -o %i -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+PostDown = iptables -D FORWARD -i %i -j DROP
+{% for e in engineers %}
+
+# engineer {{ e.name }}
+[Peer]
+PublicKey = {{ e.public_key }}
+AllowedIPs = {{ e.ip }}/32
+{% endfor %}
+{% for r in robots %}
+
+# robot {{ r.name }} (id {{ r.id }})
+[Peer]
+PublicKey = {{ r.public_key }}
+AllowedIPs = {{ r.ip }}/32
+{% endfor %}

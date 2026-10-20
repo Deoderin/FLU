@@ -1,0 +1,9 @@
+# Скрипты и шаблоны уходят на Linux и RouterOS: только LF, даже при checkout на Windows
+*.sh   text eol=lf
+*.j2   text eol=lf
+*.rsc  text eol=lf
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.html text eol=lf
+Dockerfile text eol=lf

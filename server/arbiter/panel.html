@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Роботы площадки</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --fg: #1c212b; --muted: #677084; --card: #ffffff; --line: #e1e4ea;
+    --ok: #1e8449; --warn: #a96500; --bad: #c0392b; --accent: #2456d4; --accent-fg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #13161c; --fg: #e6e9ef; --muted: #9aa2b4; --card: #1b1f27; --line: #2a303b;
+      --ok: #4cc38a; --warn: #e3a33b; --bad: #ef6a5b; --accent: #6f93ff; --accent-fg: #0d1220;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;
+           padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+  header h1 { margin: 0; font-size: 18px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+  .muted { color: var(--muted); }
+  .robot { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; }
+  .robot.mine { border-color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .name { font-weight: 600; font-size: 16px; }
+  .badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  button, select { font: inherit; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line);
+                   background: var(--card); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  button.stop { border-color: var(--bad); color: var(--bad); font-weight: 600; }
+  button:hover { filter: brightness(0.96); }
+  h2 { font-size: 15px; margin: 12px 0 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .journal { overflow-x: auto; }
+  #toast { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 520px; margin: 0 auto; padding: 10px 14px;
+           border-radius: 8px; background: var(--fg); color: var(--bg); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #toast.error { background: var(--bad); color: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="site">Площадка</h1>
+  <div id="me" class="muted"></div>
+</header>
+<main>
+  <div id="robots"></div>
+  <h2>Журнал</h2>
+  <div class="journal"><table id="journal"></table></div>
+</main>
+<div id="toast"></div>
+<script>
+const $ = (tag, attrs = {}, ...children) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) el.append(c);
+  return el;
+};
+
+async function api(path, options = {}) {
+  const r = await fetch(path, { ...options, headers: { "X-Fleet": "1", "Content-Type": "application/json" } });
+  let data = {};
+  try { data = await r.json(); } catch (e) { data = { message: await r.text() }; }
+  return { ok: r.ok, data };
+}
+
+let toastTimer;
+function toast(text, error) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.className = "show" + (error ? " error" : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.className = ""), 3500);
+}
+
+async function act(robot, action, body) {
+  const r = await api(`/api/robots/${encodeURIComponent(robot)}/${action}`, { method: "POST", body: JSON.stringify(body || {}) });
+  toast(r.data.message || (r.ok ? "готово" : "ошибка"), !r.ok);
+  refresh();
+}
+
+function link(r) {
+  if (!r.robot_online) return $("span", { class: "badge bad" }, "нет связи с роботом");
+  if (r.robot_heartbeat_age == null || r.robot_heartbeat_age > 5) return $("span", { class: "badge warn" }, "нет heartbeat");
+  return $("span", { class: "badge ok" }, "на связи");
+}
+
+function card(r, state) {
+  const me = state.me.name;
+  const mine = r.owner === me;
+  const ownerText = r.owner ? (mine ? "вы" : r.owner) : "свободен";
+  const info = $("div", { class: "row muted" },
+    $("span", {}, `Владелец: ${ownerText}`),
+    r.owner && !r.owner_connected ? $("span", { class: "warn" }, "станция владельца не подключена") : null,
+    $("span", {}, `MAVLink: ${location.hostname}:${r.port}`),
+    $("span", {}, r.clients.length ? `Подключены: ${r.clients.join(", ")}` : "Станций нет"),
+  );
+  const pending = r.pending
+    ? $("div", { class: "warn" }, `Передача: ${r.pending.by} → ${r.pending.to} (${r.pending.age} с)`)
+    : null;
+
+  const buttons = $("div", { class: "row" });
+  if (state.stop_from_any || mine) {
+    buttons.append($("button", { class: "stop", onclick: () => act(r.name, "hold") }, "Стоп (Hold)"));
+  }
+  if (!r.owner) buttons.append($("button", { class: "primary", onclick: () => act(r.name, "claim") }, "Взять"));
+  if (mine && !r.pending) {
+    const others = state.operators.filter((n) => n !== me);
+    const select = $("select", {}, ...others.map((n) => $("option", { value: n }, n)));
+    buttons.append(select, $("button", { onclick: () => act(r.name, "handover", { to: select.value }) }, "Передать"));
+    buttons.append($("button", { onclick: () => act(r.name, "release") }, "Освободить"));
+  }
+  if (r.pending && r.pending.to === me) {
+    buttons.append($("button", { class: "primary", onclick: () => act(r.name, "accept") }, "Принять"));
+    buttons.append($("button", { onclick: () => act(r.name, "cancel") }, "Отклонить"));
+  }
+  if (r.pending && r.pending.by === me) {
+    buttons.append($("button", { onclick: () => act(r.name, "cancel") }, "Отменить передачу"));
+  }
+  if (state.me.role === "dispatcher" && r.owner && !mine) {
+    buttons.append($("button", {
+      onclick: () => confirm(`Забрать ${r.name} у ${r.owner}? Робот встанет в Hold.`) && act(r.name, "takeover"),
+    }, "Забрать (диспетчер)"));
+  }
+
+  return $("section", { class: "robot" + (mine ? " mine" : "") },
+    $("div", { class: "row" }, $("span", { class: "name" }, r.name), $("span", { class: "muted" }, `slot ${r.slot}`), link(r)),
+    info, pending, buttons);
+}
+
+async function refresh() {
+  const s = await api("/api/state");
+  if (!s.ok) { toast(s.data.message || "нет доступа", true); return; }
+  const state = s.data;
+  document.getElementById("site").textContent = `Площадка ${state.site}`;
+  document.getElementById("me").textContent = `${state.me.name} · ${state.me.role === "dispatcher" ? "диспетчер" : "оператор"}`;
+  document.getElementById("robots").replaceChildren(...state.robots.map((r) => card(r, state)));
+
+  const j = await api("/api/journal");
+  if (j.ok) {
+    document.getElementById("journal").replaceChildren(...j.data.map((e) => {
+      const extra = Object.entries(e).filter(([k]) => !["ts", "robot", "event"].includes(k)).map(([k, v]) => `${k}=${v}`).join(" ");
+      return $("tr", {}, $("td", { class: "muted" }, e.ts), $("td", {}, e.robot), $("td", {}, e.event), $("td", { class: "muted" }, extra));
+    }));
+  }
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLU fleet</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --fg: #1b2029; --muted: #6a7283; --line: #e2e5eb; --soft: #eef0f4;
+    --accent: #2357d4; --accent-fg: #ffffff; --ok: #1d8348; --warn: #a66300; --bad: #c0392b;
+    --console-bg: #11151c; --console-fg: #d7dde8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1e26; --fg: #e5e8ee; --muted: #9aa2b3; --line: #2a303b; --soft: #222833;
+      --accent: #6f93ff; --accent-fg: #0c1120; --ok: #4cc38a; --warn: #e2a33c; --bad: #ef6a5b;
+      --console-bg: #0b0e13; --console-fg: #d7dde8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, select, input { font: inherit; color: inherit; }
+  button { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { background: var(--soft); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+  button.danger { color: var(--bad); border-color: var(--bad); }
+  select, input { padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); min-width: 0; }
+  a { color: var(--accent); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+
+  .top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+         padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  .brand { font-weight: 700; font-size: 16px; }
+  .brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: 100%; white-space: nowrap; }
+  .check { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .brand .muted { font-weight: 400; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .chip { display: inline-block; font-size: 12px; padding: 1px 9px; border-radius: 99px; border: 1px solid currentColor; }
+
+  .banner { margin: 12px 16px 0; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--bad); color: var(--bad); background: var(--panel); }
+  .banner ul { margin: 4px 0 0; padding-left: 18px; }
+  .hidden { display: none !important; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-content: start; min-width: 0; }
+  @media (max-width: 600px) { .layout { padding: 12px; } .top { padding: 10px 12px; } }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 6px; align-content: start; }
+  .card .title { font-weight: 600; font-size: 15px; }
+  .card .meta { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+
+  .table-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--soft); }
+  tbody tr.selected { background: var(--soft); box-shadow: inset 3px 0 0 var(--accent); }
+  tbody tr:last-child td { border-bottom: 0; }
+
+  .console { background: var(--console-bg); color: var(--console-fg); border-radius: 10px; padding: 12px 14px; margin: 0;
+             min-height: 120px; max-height: 380px; overflow: auto; font: 12.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; align-self: start;
+          position: sticky; top: 72px; max-height: calc(100vh - 88px); overflow: auto; }
+  @media (max-width: 980px) { aside { position: static; max-height: none; } }
+  .detail-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  .detail-head .title { font-size: 18px; font-weight: 700; }
+  .step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700;
+         background: var(--soft); color: var(--muted); }
+  .num.done { background: var(--ok); color: #fff; }
+  .num.failed { background: var(--bad); color: #fff; }
+  .step .name { font-weight: 600; }
+  .step .note { font-size: 12.5px; color: var(--muted); margin: 2px 0 6px; overflow-wrap: anywhere; }
+  .step .row input, .step .row select { flex: 1 1 140px; }
+  .checks { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12.5px; display: grid; gap: 3px; }
+  .checks li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px; }
+  .checks .detail { color: var(--muted); overflow-wrap: anywhere; }
+  .files { display: flex; flex-wrap: wrap; gap: 6px; }
+  .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
+
+  dialog { width: min(900px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 0; border: 1px solid var(--line);
+           border-radius: 10px; background: var(--panel); color: var(--fg); }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  dialog header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  dialog pre { margin: 0; padding: 14px; overflow: auto; max-height: calc(100vh - 140px); font: 12.5px/1.5 ui-monospace, Consolas, monospace; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">FLU fleet<span class="muted" id="root"></span></div>
+  <div class="row">
+    <span id="inv-status" class="chip muted">загрузка…</span>
+    <button onclick="run(['check'])">Проверить inventory</button>
+    <button onclick="run(['render'])">Собрать все конфиги</button>
+  </div>
+</header>
+<div id="errors" class="banner hidden"></div>
+
+<div class="layout">
+  <main>
+    <section>
+      <h2>Площадки</h2>
+      <div id="sites" class="cards"></div>
+    </section>
+    <section>
+      <h2>Роботы</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Робот</th><th>Площадка</th><th>Обслуживание</th><th>MikroTik</th><th>Последний тест</th></tr></thead>
+          <tbody id="robots"></tbody>
+        </table>
+      </div>
+    </section>
+    <section>
+      <div class="row" style="justify-content: space-between; margin-bottom: 10px;">
+        <h2 style="margin: 0;">Консоль</h2>
+        <div class="row"><span id="job-status" class="muted"></span><button id="stop" class="danger hidden" onclick="stopJob()">Остановить</button></div>
+      </div>
+      <pre id="console" class="console">Здесь появится вывод команд.</pre>
+    </section>
+  </main>
+  <aside id="detail"><div class="empty">Выберите робота в таблице</div></aside>
+</div>
+
+<dialog id="viewer">
+  <header><b id="viewer-title"></b><button onclick="document.getElementById('viewer').close()">Закрыть</button></header>
+  <pre id="viewer-body"></pre>
+</dialog>
+
+<script>
+const h = (tag, attrs = {}, ...children) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "value") el.value = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c != null && c !== false) el.append(c);
+  return el;
+};
+
+let state = null;
+let selected = Number((location.hash.match(/robot-(\d+)/) || [])[1]) || null;
+let polling = null;
+const inputs = {};  // введённые значения переживают перерисовку
+
+async function api(path, body) {
+  const options = body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Fleet": "1" }, body: JSON.stringify(body),
+  };
+  const r = await fetch(path, options);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+// --- команды -------------------------------------------------------------------
+
+async function run(args) {
+  try {
+    showJob(await api("/api/run", { args }));
+    pollJob();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function stopJob() {
+  await api("/api/stop", {});
+}
+
+function pollJob() {
+  clearTimeout(polling);
+  polling = setTimeout(async () => {
+    if (!state || !state.job) return;
+    const job = await api(`/api/jobs/${state.job.id}`);
+    showJob(job);
+    if (job.running) pollJob();
+    else refresh();
+  }, 700);
+}
+
+function showJob(job) {
+  if (!state) state = {};
+  state.job = job;
+  const con = document.getElementById("console");
+  const atBottom = con.scrollHeight - con.scrollTop - con.clientHeight < 40;
+  con.textContent = `$ ${job.command}\n${job.output}`;
+  if (atBottom || job.running) con.scrollTop = con.scrollHeight;
+  const status = document.getElementById("job-status");
+  if (job.running) { status.textContent = `выполняется… ${job.seconds} с`; status.className = "warn"; }
+  else if (job.code === 0) { status.textContent = "готово"; status.className = "ok"; }
+  else { status.textContent = `ошибка, код ${job.code}`; status.className = "bad"; }
+  document.getElementById("stop").classList.toggle("hidden", !job.running);
+  document.querySelectorAll("[data-cmd]").forEach((b) => (b.disabled = job.running));
+}
+
+function cmd(label, args, opts = {}) {
+  return h("button", {
+    class: opts.primary ? "primary" : opts.danger ? "danger" : null,
+    "data-cmd": "", disabled: opts.disabled || (state.job && state.job.running),
+    title: "fleet " + (typeof args === "function" ? "…" : args.join(" ")),
+    onclick: () => {
+      const a = typeof args === "function" ? args() : args;
+      if (!a) return;
+      if (opts.confirm && !confirm(opts.confirm)) return;
+      run(a);
+    },
+  }, label);
+}
+
+async function viewFile(path) {
+  const r = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+  document.getElementById("viewer-title").textContent = path;
+  document.getElementById("viewer-body").textContent = await r.text();
+  document.getElementById("viewer").showModal();
+}
+
+// --- отрисовка -----------------------------------------------------------------
+
+function renderHeader() {
+  document.getElementById("root").textContent = state.root;
+  const chip = document.getElementById("inv-status");
+  const banner = document.getElementById("errors");
+  const errors = state.fatal ? [state.fatal] : state.errors;
+  chip.textContent = errors.length ? `inventory: ошибок ${errors.length}` : "inventory в порядке";
+  chip.className = "chip " + (errors.length ? "bad" : "ok");
+  banner.classList.toggle("hidden", !errors.length);
+  banner.replaceChildren(h("b", {}, "Ошибки в inventory"), h("ul", {}, errors.map((e) => h("li", {}, e))));
+}
+
+function renderSites() {
+  const cards = state.sites.map((s) => {
+    const managed = s.kind === "managed";
+    return h("div", { class: "card" },
+      h("div", { class: "row", style: "justify-content: space-between" },
+        h("span", { class: "title" }, s.name),
+        h("span", { class: "chip muted" }, managed ? "наш стек" : "сервер заказчика")),
+      h("div", { class: "meta" }, `${s.customer || "—"} · ${s.endpoint}`),
+      h("div", { class: "meta" }, `роботов ${s.robots} из ${s.capacity}` + (managed ? ` · операторов ${s.operators.length}` : "")),
+      managed && h("div", { class: "meta " + (s.has_key ? "" : "warn") },
+        s.has_key ? h("span", {}, "панель: ", h("a", { href: s.panel, target: "_blank" }, s.panel)) : "сервер ещё не развёрнут"),
+      h("div", { class: "row" },
+        managed
+          ? [cmd("Развернуть", ["deploy-server", "--site", s.name], { primary: true, confirm: `Развернуть стек площадки ${s.name} на ${s.host}?` }),
+             cmd("Собрать", ["render", "--site", s.name], { disabled: !s.has_key })]
+          : cmd("Пакет заказчику", ["kit", "--site", s.name], { primary: true })));
+  });
+  if (state.service) {
+    const svc = state.service;
+    cards.push(h("div", { class: "card" },
+      h("div", { class: "row", style: "justify-content: space-between" },
+        h("span", { class: "title" }, "Сервисный туннель"), h("span", { class: "chip muted" }, "обслуживание")),
+      h("div", { class: "meta" }, svc.endpoint),
+      h("div", { class: "meta " + (svc.has_key ? "" : "warn") }, svc.has_key ? "ключ сервера есть" : "сервер ещё не развёрнут"),
+      h("div", { class: "row" }, cmd("Развернуть", ["deploy-server", "--service"], { confirm: `Развернуть сервисный туннель на ${svc.host}?` }))));
+  }
+  document.getElementById("sites").replaceChildren(...cards);
+}
+
+function reportCell(rep) {
+  if (!rep) return h("span", { class: "muted" }, "не было");
+  const cls = rep.fail ? "bad" : rep.warn ? "warn" : "ok";
+  const text = rep.fail ? `FAIL ${rep.fail}` : rep.warn ? `WARN ${rep.warn}` : "пройден";
+  return h("span", {}, h("span", { class: "chip " + cls }, text), " ", h("span", { class: "muted" }, rep.time));
+}
+
+function renderRobots() {
+  const rows = state.robots.map((r) => h("tr", {
+      class: r.id === selected ? "selected" : null,
+      onclick: () => { selected = r.id; location.hash = `robot-${r.id}`; render(); },
+    },
+    h("td", {}, h("b", {}, r.name), h("div", { class: "muted" }, r.serial)),
+    h("td", {}, r.site || "—", r.provisioned ? h("span", { class: "muted" }, ` · slot ${r.slot}`) : h("div", { class: "warn" }, "не зарегистрирован")),
+    h("td", {}, r.service_tunnel ? "туннель к нам" : h("span", { class: "muted" }, "нет")),
+    h("td", {}, r.baseline ? h("span", { class: "ok" }, "залит") : h("span", { class: "muted" }, "—")),
+    h("td", {}, reportCell(r.report))));
+  document.getElementById("robots").replaceChildren(...rows);
+}
+
+function checkStatus(rep, ...names) {
+  if (!rep) return null;
+  const found = rep.checks.filter((c) => names.includes(c.name));
+  if (!found.length) return null;
+  if (found.some((c) => c.status === "FAIL")) return "failed";
+  return found.every((c) => c.status === "PASS") ? "done" : null;
+}
+
+function step(n, status, name, note, ...controls) {
+  return h("div", { class: "step" },
+    h("div", { class: "num " + (status || "") }, status === "done" ? "✓" : status === "failed" ? "!" : String(n)),
+    h("div", {}, h("div", { class: "name" }, name), note && h("div", { class: "note" }, note), ...controls));
+}
+
+function field(key, attrs) {
+  const el = h("input", { ...attrs, value: inputs[key] ?? attrs.value ?? "" });
+  el.addEventListener("input", () => (inputs[key] = el.value));
+  return el;
+}
+
+function renderDetail() {
+  const aside = document.getElementById("detail");
+  const r = state.robots.find((x) => x.id === selected);
+  if (!r) { aside.replaceChildren(h("div", { class: "empty" }, "Выберите робота в таблице")); return; }
+  const id = String(r.id);
+  const site = state.sites.find((s) => s.name === r.site);
+  const managed = site && site.kind === "managed";
+  const rep = r.report;
+  const off = !r.provisioned;
+
+  // 1. регистрация
+  const siteSelect = h("select", {}, state.sites.map((s) => h("option", { value: s.name, selected: s.name === r.site }, s.name)));
+  const s1 = step(1, r.provisioned ? "done" : null, "Регистрация",
+    r.provisioned ? `площадка ${r.site}, slot ${r.slot} (MAVLink SYSID ${r.slot})` : "выдать slot и ключи, собрать конфиги",
+    h("div", { class: "row" }, !r.provisioned && siteSelect,
+      cmd(r.provisioned ? "Пересобрать конфиги" : "Зарегистрировать",
+        () => r.provisioned ? ["provision", "--id", id] : ["provision", "--id", id, "--site", siteSelect.value], { primary: !r.provisioned })));
+
+  // 2. MikroTik
+  const s2 = step(2, r.baseline ? "done" : null, "MikroTik",
+    r.baseline ? "конфиг залит, эталон для проверки дрейфа снят" : "Netinstall с robot.rsc или сброс по SSH на стенде (192.168.88.1)",
+    h("div", { class: "row" },
+      field(`pwd-${id}`, { type: "password", placeholder: "текущий пароль admin" }),
+      cmd("Залить конфиг", () => ["bench", "mikrotik", "--id", id, "--password", inputs[`pwd-${id}`] || ""],
+        { disabled: off, confirm: "Роутер будет сброшен и перезагружен с конфигом робота. Продолжить?" })));
+
+  // 3. камеры
+  const pwdBox = h("span", { class: "muted" });
+  const s3 = step(3, checkStatus(rep, "камера cam1", "камера cam2"), "Камеры",
+    "активируйте камеры паролем робота (SADP / ConfigTool) и включите в порты камер",
+    h("div", { class: "row" },
+      h("button", { disabled: off, onclick: async () => {
+        try { pwdBox.textContent = (await api(`/api/camera-password?id=${id}`)).password; } catch (e) { pwdBox.textContent = e.message; }
+      } }, "Показать пароль"), pwdBox,
+      cmd("Перевести на адреса робота", ["bench", "cameras", "--id", id], { disabled: off })));
+
+  // 4. полётный контроллер
+  const options = [...state.ports.map((p) => ({ value: p.device, label: `${p.device} — ${p.description}` }))];
+  if (r.mavlink) options.push({ value: r.mavlink, label: `через арбитр (${r.mavlink})` });
+  const conn = field(`conn-${id}`, { placeholder: "COM5 или tcp:сервер:порт", list: `ports-${id}`, value: options[0]?.value || "" });
+  const s4 = step(4, checkStatus(rep, "параметры"), "Полётный контроллер",
+    "USB на стенде или через арбитр (писать через арбитр может только владелец робота)",
+    h("datalist", { id: `ports-${id}` }, options.map((o) => h("option", { value: o.value }, o.label))),
+    h("div", { class: "row" }, conn),
+    h("div", { class: "row", style: "margin-top: 6px" },
+      cmd("Сравнить", () => conn.value && ["fc", "--id", id, "--connect", conn.value], { disabled: off }),
+      cmd("Залить и перезагрузить", () => conn.value && ["fc", "--id", id, "--connect", conn.value, "--push", "--yes", "--reboot"],
+        { disabled: off, confirm: "Записать отличающиеся параметры и перезагрузить ФК?" })));
+
+  // 5. сервер
+  const s5 = step(5, managed ? checkStatus(rep, "арбитр") : null, "Сервер площадки",
+    !site ? "сначала регистрация" : managed ? `добавить робота на сервер ${site.host}` : "передать пакет администратору заказчика",
+    h("div", { class: "row" }, site && (managed
+      ? cmd(`Развернуть ${site.name}`, ["deploy-server", "--site", site.name], { disabled: off, confirm: `Обновить стек площадки ${site.name}?` })
+      : cmd("Собрать пакет заказчику", ["kit", "--site", site.name], { disabled: off }))));
+
+  // 6. приёмка
+  const noMt = h("input", { type: "checkbox" });
+  const s6 = step(6, rep ? (rep.fail ? "failed" : "done") : null, "Приёмочный тест",
+    rep ? `последний: ${rep.time}` : "нужен WireGuard площадки на этой станции (оператор test-bench)",
+    h("div", { class: "row" },
+      cmd("Запустить тест", () => ["test", "--id", id, ...(noMt.checked ? ["--no-mikrotik"] : [])], { primary: true, disabled: off }),
+      h("label", { class: "check muted" }, noMt, "без MikroTik")),
+    rep && h("ul", { class: "checks" }, rep.checks.map((c) => h("li", {},
+      h("span", { class: c.status === "PASS" ? "ok" : c.status === "FAIL" ? "bad" : c.status === "WARN" ? "warn" : "muted" },
+        c.status === "PASS" ? "OK" : c.status),
+      h("span", {}, c.name, c.detail && h("div", { class: "detail" }, c.detail))))));
+
+  // переезд и файлы
+  const targets = state.sites.filter((s) => s.name !== r.site);
+  const target = h("select", {}, targets.map((s) => h("option", { value: s.name }, s.name)));
+  const move = h("div", { class: "step", style: "grid-template-columns: 1fr" },
+    h("div", {}, h("div", { class: "name" }, "Переезд на другую площадку"),
+      h("div", { class: "note" }, "новый туннель поднимается рядом со старым, без handshake — автооткат"),
+      h("div", { class: "row" }, target,
+        cmd("Перевезти", () => ["move", "--id", id, "--to", target.value, "--yes"],
+          { disabled: off || !targets.length, confirm: `Перевезти ${r.name} на ${target.value}?` }))));
+  const files = h("div", { class: "step", style: "grid-template-columns: 1fr" },
+    h("div", {}, h("div", { class: "name" }, "Файлы"),
+      r.files.length
+        ? h("div", { class: "files" }, r.files.map((f) => h("button", { onclick: () => viewFile(f) }, f.split("/").pop())))
+        : h("div", { class: "note" }, "ещё не собраны")));
+
+  aside.replaceChildren(
+    h("div", { class: "detail-head" },
+      h("span", { class: "title" }, r.name),
+      h("span", { class: "muted" }, `${r.serial} · ${r.platform}`)),
+    s1, s2, s3, s4, s5, s6, move, files);
+}
+
+function render() {
+  renderHeader();
+  renderSites();
+  renderRobots();
+  renderDetail();
+  if (state.job) showJob(state.job);
+}
+
+async function refresh() {
+  try {
+    const active = document.activeElement;
+    if (active && ["INPUT", "SELECT"].includes(active.tagName) && document.getElementById("detail").contains(active)) return;
+    state = await api("/api/state");
+    render();
+    if (state.job && state.job.running) pollJob();
+  } catch (e) {
+    document.getElementById("inv-status").textContent = "нет связи с fleet ui";
+    document.getElementById("inv-status").className = "chip bad";
+  }
+}
+
+window.addEventListener("hashchange", () => {
+  selected = Number((location.hash.match(/robot-(\d+)/) || [])[1]) || null;
+  if (state) render();
+});
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

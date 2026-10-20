@@ -1,0 +1,24 @@
+# fleet: WireGuard server of site {{ site.name }} - generated, do not edit
+[Interface]
+Address = {{ server_ip }}/{{ prefix }}
+ListenPort = {{ site.endpoint.port }}
+PrivateKey = {{ private_key }}
+MTU = {{ mtu }}
+# The server never forwards between peers: operators only talk to the
+# arbiter and MediaMTX on this host, robots only answer them.
+PostUp = iptables -I FORWARD -i %i -j DROP
+PostDown = iptables -D FORWARD -i %i -j DROP
+{% for r in robots %}
+
+# robot {{ r.name }} (id {{ r.id }}, slot {{ r.slot }})
+[Peer]
+PublicKey = {{ r.public_key }}
+AllowedIPs = {{ r.tunnel_ip }}/32, {{ r.lan_block }}
+{% endfor %}
+{% for o in operators %}
+
+# operator {{ o.name }} ({{ o.role }})
+[Peer]
+PublicKey = {{ o.public_key }}
+AllowedIPs = {{ o.ip }}/32
+{% endfor %}

@@ -1,0 +1,25 @@
+# Роботы.
+#   id       — глобальный номер робота (как на шильдике), не меняется никогда
+#   platform — ревизия железа из base/platforms.yaml
+#   site     — площадка из sites.yaml
+#   slot     — номер робота внутри площадки, он же MAVLink SYSID.
+#              Заполняет fleet (provision / move), руками не трогать.
+#   service_tunnel — второй туннель к нам для обслуживания (нужно согласие заказчика)
+robots:
+  - id: 1
+    serial: FLU-2026-0001
+    platform: flu-v1
+    site: flu-acme
+    service_tunnel: true
+
+  - id: 2
+    serial: FLU-2026-0002
+    platform: flu-v1
+    site: globex
+    service_tunnel: true
+
+  - id: 3
+    serial: FLU-2026-0003
+    platform: flu-v1
+    site: initech
+    service_tunnel: false

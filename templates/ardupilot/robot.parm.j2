@@ -1,0 +1,34 @@
+# fleet: parameters managed by fleet for {{ robot.name }} (site {{ site_name }}, slot {{ slot }})
+# They override base/ardupilot-base.parm.
+{% if fc.param_names == "mav" %}
+MAV_SYSID,{{ slot }}
+MAV_GCS_SYSID,255
+MAV_OPTIONS,1
+{% else %}
+SYSID_THISMAV,{{ slot }}
+SYSID_MYGCS,255
+SYSID_ENFORCE,1
+{% endif %}
+# GCS failsafe: the arbiter forwards heartbeats of the robot owner only
+FS_GCS_ENABLE,1
+FS_GCS_TIMEOUT,{{ failsafe.gcs_timeout_s }}
+FS_ACTION,{{ failsafe.action }}
+{% if fc.link == "ardupilot-net" %}
+# MAVLink over the FC's own Ethernet: TCP server on {{ lan.fc }}:{{ fc.mavlink_port }}
+NET_ENABLE,1
+NET_DHCP,0
+{% for octet in lan.fc.split(".") %}
+NET_IPADDR{{ loop.index0 }},{{ octet }}
+{% endfor %}
+NET_NETMASK,24
+{% for octet in lan.router.split(".") %}
+NET_GWADDR{{ loop.index0 }},{{ octet }}
+{% endfor %}
+NET_P1_TYPE,4
+NET_P1_PROTOCOL,2
+NET_P1_PORT,{{ fc.mavlink_port }}
+{% else %}
+# MAVLink over UART to the network adapter (adapter: TCP server {{ lan.fc }}:{{ fc.mavlink_port }})
+SERIAL{{ fc.serial.port }}_PROTOCOL,2
+SERIAL{{ fc.serial.port }}_BAUD,{{ fc.serial.baud }}
+{% endif %}

@@ -1,0 +1,17 @@
+{#- Переезд, шаг 1: добавить новую площадку рядом со старой (pending)
+    и запустить автооткат. Старый туннель не трогаем, пока новый не поднимется. -#}
+{% from "mikrotik/_site.rsc.j2" import site_block, remove_tagged %}
+# fleet move: {{ robot.name }} {{ old_site }} -> {{ new.name }} (pending, auto-rollback in {{ rollback_min }} min)
+
+# Leftovers of a previous failed attempt
+{{ remove_tagged(new.tag) }}
+/system script remove [find name="fleet-rollback-{{ new.name }}"]
+
+{{ site_block(new) }}
+
+/system script add name="fleet-rollback-{{ new.name }}" source={
+{{ remove_tagged(new.tag) | indent(2, true) }}
+  :log warning "fleet: move to {{ new.name }} not confirmed, rolled back"
+}
+:execute script="{ :delay {{ rollback_min }}m; /system script run [find name=\"fleet-rollback-{{ new.name }}\"] }"
+:log info "fleet: move to {{ new.name }} started"

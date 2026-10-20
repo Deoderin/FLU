@@ -1,0 +1,47 @@
+# fleet: MediaMTX of site {{ site.name }} - generated, do not edit.
+# Video is pulled from a robot only while somebody watches (sourceOnDemand)
+# and is fanned out here, so the robot's LTE uplink carries one stream per camera.
+# Everything listens on the tunnel address only: several sites can share one host.
+logLevel: info
+
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ["{{ operators_net }}"]
+    permissions:
+      - action: read
+        path:
+
+api: false
+metrics: false
+pprof: false
+playback: false
+
+rtsp: true
+rtspTransports: [tcp]
+rtspAddress: {{ server_ip }}:{{ rtsp_port }}
+rtpAddress: {{ server_ip }}:8000
+rtcpAddress: {{ server_ip }}:8001
+
+rtmp: false
+hls: false
+srt: false
+
+webrtc: true
+webrtcAddress: {{ server_ip }}:{{ webrtc_port }}
+webrtcLocalUDPAddress: {{ server_ip }}:8189
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts: ["{{ server_ip }}"]
+
+paths:
+{% for cam in cameras %}
+  {{ cam.path }}:
+    source: {{ cam.source }}
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 15s
+    sourceOnDemandCloseAfter: 30s
+    rtspTransport: tcp
+{% else %}
+  {}
+{% endfor %}

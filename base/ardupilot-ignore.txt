@@ -1,0 +1,35 @@
+# Параметры, уникальные для каждого экземпляра робота.
+# Не заливаются из эталона и не сравниваются в приёмочном тесте.
+# Шаблоны в стиле fnmatch: * — любые символы.
+
+# Компас
+COMPASS_OFS*
+COMPASS_DIA*
+COMPASS_ODI*
+COMPASS_MOT*
+COMPASS_SCALE*
+COMPASS_DEV_ID*
+COMPASS_PRIO*
+
+# IMU
+INS_ACC*OFFS_*
+INS_ACC*SCAL_*
+INS_GYR*OFFS_*
+INS_ACC*_ID
+INS_GYR*_ID
+INS_*CALTEMP*
+INS_TCAL*
+
+# Барометр
+BARO*_GND_PRESS
+BARO*_DEVID
+
+# Калибровка пульта и горизонта
+RC*_MIN
+RC*_MAX
+RC*_TRIM
+AHRS_TRIM_*
+
+# Счётчики и служебное
+STAT_*
+FORMAT_VERSION

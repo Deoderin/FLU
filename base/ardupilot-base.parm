@@ -1,0 +1,14 @@
+# Эталонные параметры ArduPilot для платформы flu-v1.
+#
+# Сюда кладётся полная выгрузка параметров с настроенного и проверенного робота:
+#   Mission Planner: Config -> Full Parameter List -> Save
+#   QGroundControl:  Parameters -> Tools -> Save to file
+# Поддерживаются оба формата (NAME,VALUE и табличный формат QGC).
+#
+# Параметры калибровки и счётчики (компас, IMU, RC, статистика) отфильтровываются
+# по base/ardupilot-ignore.txt: они уникальны для каждого экземпляра.
+#
+# Параметры, которыми управляет fleet (SYSID, failsafe, канал MAVLink),
+# задаются в templates/ardupilot/robot.parm.j2 и перекрывают эти значения.
+#
+# Пока файл пуст, fleet управляет только своими параметрами.
