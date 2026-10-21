@@ -1,4 +1,5 @@
 import ipaddress
+import shutil
 
 import pytest
 
@@ -107,3 +108,14 @@ def test_empty_robot_list(root):
     (root / "inventory" / "robots.yaml").write_text("# порожньо\nrobots:\n", "utf-8")
     inv = Inventory.load(root)
     assert inv.robots == {}
+
+
+def test_inventory_created_from_templates(tmp_path):
+    """Новий ноутбук: inventory/ з'являється з шаблонів; уже наявний свій інвентар не перезаписується."""
+    for name in ("inventory.example", "base"):
+        shutil.copytree(REPO / name, tmp_path / name)
+    inv = Inventory.load(tmp_path)
+    assert sorted(p.name for p in (tmp_path / "inventory").iterdir()) == ["operators.yaml", "robots.yaml", "sites.yaml"]
+    assert (inv.robots, inv.operators) == ({}, {})
+    (tmp_path / "inventory" / "robots.yaml").write_text("robots:\n  - {id: 1, serial: MY-1, platform: flu-v1}\n", "utf-8")
+    assert Inventory.load(tmp_path).robot(1).serial == "MY-1"

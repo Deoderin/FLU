@@ -9,6 +9,7 @@ import base64
 import binascii
 import ipaddress
 import re
+import shutil
 import zlib
 from dataclasses import dataclass, field
 from ipaddress import IPv4Address, IPv4Network
@@ -25,10 +26,24 @@ ROBOT_LAN = A.LAN
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
 ROLES = {"operator", "dispatcher"}
 PLATFORM_SECTIONS = ("wan", "ports", "fc", "failsafe", "cameras", "modes")
+# У git лежать лише порожні шаблони. Справжній inventory/ (сервер, пілоти, НРК) — тільки на цьому
+# ноутбуці (.gitignore): разом із кодом він не має потрапити до інших.
+TEMPLATE_DIR = "inventory.example"
 
 
 class InventoryError(Exception):
     """Помилка в inventory: повідомлення показується людині як є."""
+
+
+def ensure_inventory(root: Path) -> None:
+    """Перший запуск на новому ноутбуці: inventory/ створюється з шаблонів. Наявні файли не чіпаємо."""
+    src, dst = root / TEMPLATE_DIR, root / "inventory"
+    if not src.is_dir():
+        return
+    dst.mkdir(exist_ok=True)
+    for template in sorted(src.glob("*.yaml")):
+        if not (dst / template.name).exists():
+            shutil.copyfile(template, dst / template.name)
 
 
 def _yaml() -> YAML:
@@ -221,6 +236,7 @@ class Inventory:
 
     @classmethod
     def load(cls, root: Path) -> Inventory:
+        ensure_inventory(root)
         y = _yaml()
 
         def read(rel: str) -> Any:

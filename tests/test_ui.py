@@ -86,12 +86,12 @@ def test_run_command(ui):
 
 @pytest.fixture
 def simple_ui(tmp_path):
-    """Простий режим на справжньому (порожньому) інвентарі репозиторію — як на новому ноутбуці."""
+    """Простий режим як на новому ноутбуці: лише шаблони інвентарю, inventory/ програма створить сама."""
     import shutil
 
     from .conftest import REPO
 
-    for name in ("inventory", "base", "templates", "server"):
+    for name in ("inventory.example", "base", "templates", "server"):
         shutil.copytree(REPO / name, tmp_path / name)
     server = UiServer(("127.0.0.1", 0), tmp_path)
     threading.Thread(target=server.serve_forever, daemon=True).start()

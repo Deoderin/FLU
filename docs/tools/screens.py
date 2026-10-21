@@ -90,7 +90,7 @@ OVERLAY_JS = """
 
 
 def make_root(tmp: Path) -> Path:
-    for name in ("inventory", "base", "templates", "server"):
+    for name in ("inventory.example", "base", "templates", "server"):  # inventory/ створиться з шаблонів
         shutil.copytree(REPO / name, tmp / name)
     return tmp
 

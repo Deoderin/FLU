@@ -16,8 +16,8 @@ from .conftest import REPO
 
 
 def laptop(path: Path) -> Path:
-    """Копія репозиторію з його справжнім (порожнім) інвентарем — як на новому ноутбуці."""
-    for name in ("inventory", "base", "templates", "server"):
+    """Копія репозиторію, як на новому ноутбуці: лише шаблони інвентарю, inventory/ програма створить сама."""
+    for name in ("inventory.example", "base", "templates", "server"):
         shutil.copytree(REPO / name, path / name)
     return path
 
