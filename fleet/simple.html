@@ -51,7 +51,7 @@
   .summary { font-size: 15px; overflow-wrap: anywhere; }
   .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
   label.field { display: grid; gap: 5px; font-size: 14px; color: var(--muted); flex: 1 1 200px; min-width: 0; }
-  input[type=text], input[type=password], textarea { width: 100%; height: 42px; padding: 0 12px; border-radius: 9px;
+  input[type=text], input[type=password], textarea, select { width: 100%; height: 42px; padding: 0 12px; border-radius: 9px;
          border: 1px solid var(--line); background: var(--panel); }
   textarea { height: 110px; padding: 10px 12px; resize: vertical; font: 13px/1.45 ui-monospace, Consolas, monospace; }
   button.btn { height: 44px; padding: 0 20px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel);
@@ -111,8 +111,9 @@ const I18N = {
   uk: {
     title: "FLU · налаштування НРК", adv: "Розширений режим",
     intro: "Йдіть по кроках зверху вниз. Де написано «скопіювати» — натисніть кнопку, де «вставити» — клацніть правою кнопкою миші в потрібному місці.",
-    s1: "Пілот і НРК", pilot: "Ваше ім'я (латиницею)", pilot_ph: "наприклад, ivan", serial: "Заводський номер НРК", serial_ph: "наприклад, FLU-2026-0001",
-    s1_btn: "Далі", s1_done: "Пілот {pilot} · НРК {serial} ({name})", s1_new: "Інший НРК",
+    s1: "Пілот і НРК", pilot: "Пілот", new_pilot: "+ Новий пілот", new_name: "Ім'я нового пілота (латиницею)", pilot_ph: "наприклад, ivan", serial: "Заводський номер НРК", serial_ph: "наприклад, FLU-2026-0001",
+    s1_btn: "Далі", s1_done: "Пілот {pilot} · НРК {serial} ({name})", s1_new: "Інший НРК або пілот",
+    s1_hint: "Виберіть пілота, якому додаєте НРК, або створіть нового. У кожного пілота свій тунель WireGuard, а НРК бачить лише свій пілот.",
     s1_need: "Вкажіть ім'я і заводський номер НРК",
     s2: "Сервер: вставте команду",
     s2a: "1. Відкрийте сервер", host: "Адреса сервера", host_ph: "наприклад, 203.0.113.10", user: "Користувач",
@@ -128,11 +129,12 @@ const I18N = {
     s3: "Відповідь сервера", s3_hint: "Сервер виведе рядок, що починається з FLU1: і закінчується на :END. Виділіть його мишею повністю, скопіюйте (Enter або Ctrl+C) і вставте сюди.",
     s3_ph: "FLU1:....:END", s3_btn: "Застосувати", s3_done: "Сервер {endpoint} · ваша адреса {pilot_ip} · НРК {name}, слот {slot}",
     s3_again: "Вставити іншу відповідь",
-    s4: "Пілот у WireGuard", s4_btn: "Створити пілота", s4_hint: "Windows спитає дозвіл адміністратора — натисніть «Так». Після цього в програмі WireGuard з'явиться тунель {tunnel}.",
+    s4: "Пілот у WireGuard", s4_btn: "Створити пілота", s4_hint: "Windows спитає дозвіл адміністратора — натисніть «Так». Після цього в програмі WireGuard з'явиться тунель {tunnel}. Тунелі інших пілотів цього ноутбука вимкнуться: одночасно працює лише один.",
+    s4_file: "Файл тунелю для ноутбука пілота", s4_file_hint: "На ноутбуці пілота: WireGuard → Import tunnel(s) from file. Тут тунель цього пілота тоді вимкніть.",
     s4_running: "Тунель {tunnel} працює ✓", s4_stopped: "Тунель {tunnel} вимкнено — увімкніть його в програмі WireGuard (кнопка Activate)",
     s4_missing: "", s4_unsupported: "Це не Windows: імпортуйте конфіг пілота у WireGuard вручну.",
     s4_no_wg: "WireGuard не встановлено — запустіть setup.cmd ще раз.", s4_again: "Створити ще раз",
-    s5: "Роутер", s5_hint: "Роутер скинуто до заводських налаштувань. Під'єднайте ноутбук кабелем у порт 2, 3, 4 або 5 роутера (не в 1 — він для Starlink), зачекайте 30 секунд і натисніть «Перевірити підключення».",
+    s5: "Роутер", s5_hint: "Роутер скинуто до заводських налаштувань. Під'єднайте ноутбук кабелем у порт 5 роутера (1 — для Starlink, 2 і 3 — для камер, 4 — для ФК), зачекайте 30 секунд і натисніть «Перевірити підключення».",
     s5_pwd: "Пароль роутера (якщо в WinBox входите без пароля — лишіть порожнім)", s5_btn: "Прошити роутер", s5_done: "Роутер прошито ✓",
     s5_check: "Перевірити підключення", s5_checking: "Перевіряю кабель і шукаю роутер… (кілька секунд)", s5_found: "Знайдено роутер: {text}",
     s5_noip: "У роутера немає IP-адреси — скиньте його кнопкою Reset до заводських налаштувань.",
@@ -143,7 +145,7 @@ const I18N = {
     logs: "Журнали", log_saved: "Журнал: {log}", copy_log: "Скопіювати журнал", open_logs: "Відкрити теку з журналами",
     failed_log: "Не вийшло — подробиці в «Ході виконання» нижче. Журнал збережено, його можна надіслати.",
     s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → тип TCP, адреса й порт:",
-    s6_btn: "Перевірити зв'язок з НРК", s6_last: "Остання перевірка: {time}",
+    s6_btn: "Перевірити зв'язок з НРК", s6_tunnel: "Спочатку увімкніть тунель пілота {pilot} (крок 4): НРК видно лише через нього.", s6_last: "Остання перевірка: {time}",
     running: "Виконується… {s} с", done: "Готово ✓", failed: "Не вийшло — подробиці нижче", log: "Хід виконання",
     chk: { inventory: "налаштування", registration: "реєстрація", mavlink: "зв'язок з НРК (MAVLink)", params: "параметри", gps: "GPS",
            battery: "батарея", cameras: "камери", mikrotik: "роутер", mikrotik_config: "роутер: конфіг", site_tunnel: "тунель роутера",
@@ -152,8 +154,9 @@ const I18N = {
   en: {
     title: "FLU · UGV setup", adv: "Advanced mode",
     intro: "Go through the steps from top to bottom. Where it says \"copy\", press the button; where it says \"paste\", right-click in that place.",
-    s1: "Pilot and UGV", pilot: "Your name (latin letters)", pilot_ph: "e.g. ivan", serial: "UGV serial number", serial_ph: "e.g. FLU-2026-0001",
-    s1_btn: "Next", s1_done: "Pilot {pilot} · UGV {serial} ({name})", s1_new: "Another UGV",
+    s1: "Pilot and UGV", pilot: "Pilot", new_pilot: "+ New pilot", new_name: "New pilot name (latin letters)", pilot_ph: "e.g. ivan", serial: "UGV serial number", serial_ph: "e.g. FLU-2026-0001",
+    s1_btn: "Next", s1_done: "Pilot {pilot} · UGV {serial} ({name})", s1_new: "Another UGV or pilot",
+    s1_hint: "Choose the pilot you add the UGV to, or create a new one. Each pilot has an own WireGuard tunnel, and a UGV is visible only to its pilot.",
     s1_need: "Enter your name and the UGV serial number",
     s2: "Server: paste the command",
     s2a: "1. Open the server", host: "Server address", host_ph: "e.g. 203.0.113.10", user: "User",
@@ -169,11 +172,12 @@ const I18N = {
     s3: "Server response", s3_hint: "The server prints a line that starts with FLU1: and ends with :END. Select all of it with the mouse, copy it (Enter or Ctrl+C) and paste it here.",
     s3_ph: "FLU1:....:END", s3_btn: "Apply", s3_done: "Server {endpoint} · your address {pilot_ip} · UGV {name}, slot {slot}",
     s3_again: "Paste another response",
-    s4: "Pilot in WireGuard", s4_btn: "Create pilot", s4_hint: "Windows asks for administrator permission - press Yes. Then the tunnel {tunnel} appears in the WireGuard app.",
+    s4: "Pilot in WireGuard", s4_btn: "Create pilot", s4_hint: "Windows asks for administrator permission - press Yes. Then the tunnel {tunnel} appears in the WireGuard app. The tunnels of other pilots on this laptop are turned off: only one works at a time.",
+    s4_file: "Tunnel file for the pilot's laptop", s4_file_hint: "On the pilot's laptop: WireGuard → Import tunnel(s) from file. Then turn this pilot's tunnel off here.",
     s4_running: "Tunnel {tunnel} is up ✓", s4_stopped: "Tunnel {tunnel} is off - enable it in the WireGuard app (Activate)",
     s4_missing: "", s4_unsupported: "This is not Windows: import the pilot config into WireGuard manually.",
     s4_no_wg: "WireGuard is not installed - run setup.cmd again.", s4_again: "Create again",
-    s5: "Router", s5_hint: "The router is reset to factory settings. Connect the laptop with a cable to port 2, 3, 4 or 5 (not 1 - it is for Starlink), wait 30 seconds and press \"Check connection\".",
+    s5: "Router", s5_hint: "The router is reset to factory settings. Connect the laptop with a cable to router port 5 (1 is for Starlink, 2 and 3 for the cameras, 4 for the FC), wait 30 seconds and press \"Check connection\".",
     s5_pwd: "Router password (leave empty if WinBox lets you in without one)", s5_btn: "Flash router", s5_done: "Router flashed ✓",
     s5_check: "Check connection", s5_checking: "Checking the cable and looking for the router… (a few seconds)", s5_found: "Router found: {text}",
     s5_noip: "The router has no IP address - reset it to factory settings with the Reset button.",
@@ -184,7 +188,7 @@ const I18N = {
     logs: "Logs", log_saved: "Log: {log}", copy_log: "Copy log", open_logs: "Open the logs folder",
     failed_log: "It did not work - details in Progress below. The log is saved and can be sent.",
     s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → type TCP, address and port:",
-    s6_btn: "Check the link to the UGV", s6_last: "Last check: {time}",
+    s6_btn: "Check the link to the UGV", s6_tunnel: "First turn on the tunnel of pilot {pilot} (step 4): the UGV is visible only through it.", s6_last: "Last check: {time}",
     running: "Running… {s} s", done: "Done ✓", failed: "It did not work - details below", log: "Progress",
     chk: { inventory: "setup", registration: "registration", mavlink: "link to the UGV (MAVLink)", params: "parameters", gps: "GPS",
            battery: "battery", cameras: "cameras", mikrotik: "router", mikrotik_config: "router: config", site_tunnel: "router tunnel",
@@ -355,7 +359,8 @@ function render() {
   const pilot = pilotName();
   const done1 = Boolean(robot && pilot);
   const done3 = Boolean(done1 && robot.provisioned && st.server && st.pilots.includes(pilot));
-  const done4 = st.tunnel.status === "running";
+  const tun = (st.tunnels || {})[pilot] || { name: `flu-${st.site}-${pilot}`, status: "missing" };  // тунель вибраного пілота
+  const done4 = tun.status === "running";
   const done5 = Boolean(done3 && robot.baseline);
   const stateOf = (done, ready) => (done ? "done" : ready ? "now" : "locked");
   const steps = [];
@@ -366,14 +371,21 @@ function render() {
       h("div", { class: "summary" }, t("s1_done", { pilot, serial: robot.serial, name: robot.name })),
       h("div", {}, h("button", { class: "link", onclick: () => { inputs.edit1 = "1"; inputs.serial = ""; message = {}; command = null; store.set("fleet-current", null); render(); } }, t("s1_new")))));
   } else {
-    const [lp, ip] = field("pilot", t("pilot"), { placeholder: t("pilot_ph"), value: pilot });
+    // Пілоти, чиї ключі на цьому ноутбуці: їм можна додавати НРК. Новий пілот — окремий пункт
+    const local = st.local_pilots;
+    const choice = inputs.pilotChoice ?? (local.includes(pilot) ? pilot : local[0] ?? "new");
+    const sel = h("select", {}, ...local.map((p) => h("option", { value: p }, p)), h("option", { value: "new" }, t("new_pilot")));
+    sel.value = choice;
+    sel.addEventListener("change", () => { inputs.pilotChoice = sel.value; render(); });
+    const [lp, ip] = field("pilot", t("new_name"), { placeholder: t("pilot_ph"), value: local.includes(pilot) ? "" : pilot });
     const [ls, is] = field("serial", t("serial"), { placeholder: t("serial_ph") });
     steps.push(card(1, "now", t("s1"),
-      h("div", { class: "row" }, lp, ls),
+      local.length > 0 && h("p", { class: "hint" }, t("s1_hint")),
+      h("div", { class: "row" }, local.length > 0 && h("label", { class: "field" }, t("pilot"), sel), choice === "new" && lp, ls),
       h("div", {}, btn(t("s1_btn"), async () => {
-        const p = ip.value.trim(), s = is.value.trim();
+        const p = choice === "new" ? ip.value.trim() : choice, s = is.value.trim();
         if (!p || !s) { message[1] = [t("s1_need"), "bad"]; render(); return; }
-        try { await prepareCommand(p, s); inputs.edit1 = ""; message[1] = null; await refresh(); }
+        try { await prepareCommand(p, s); inputs.edit1 = ""; inputs.pilotChoice = null; message[1] = null; await refresh(); }
         catch (e) { message[1] = [e.message, "bad"]; render(); }
       }, { primary: true }))));
   }
@@ -425,16 +437,20 @@ function render() {
   }
 
   // 4. Пілот у WireGuard
-  const tunnel = st.tunnel.name;
+  const tunnel = tun.name;
   const s4note = st.wireguard === false ? [t("s4_no_wg"), "bad"]
     : done4 ? [t("s4_running", { tunnel }), "ok"]
-    : st.tunnel.status === "stopped" ? [t("s4_stopped", { tunnel }), "warn"]
-    : st.tunnel.status === "unsupported" ? [t("s4_unsupported"), "warn"] : null;
+    : tun.status === "stopped" ? [t("s4_stopped", { tunnel }), "warn"]
+    : tun.status === "unsupported" ? [t("s4_unsupported"), "warn"] : null;
   steps.push(card(4, stateOf(done4, done3), t("s4"),
     h("p", { class: "hint" }, t("s4_hint", { tunnel })),
     s4note && h("div", { class: "status " + s4note[1] }, s4note[0]),
-    h("div", {}, btn(done4 ? t("s4_again") : t("s4_btn"), () => run(4, ["wg-install", "--site", st.site, "--pilot", pilot]),
-      { primary: done3 && !done4, job: true, disabled: !done3 || st.wireguard === false }))));
+    h("div", { class: "row" }, btn(done4 ? t("s4_again") : t("s4_btn"), () => run(4, ["wg-install", "--site", st.site, "--pilot", pilot]),
+      { primary: done3 && !done4, job: true, disabled: !done3 || st.wireguard === false }),
+      done3 && h("button", { class: "link", onclick: async () => {
+        try { await api("/api/simple/open-pilot-conf", { pilot }); } catch (e) { message[4] = [e.message, "bad"]; render(); }
+      } }, t("s4_file"))),
+    done3 && h("p", { class: "hint" }, t("s4_file_hint"))));
 
   // 5. Роутер
   const [lpw, ipw] = field(`pwd-${robot?.id}`, t("s5_pwd"), { type: "password" });
@@ -469,6 +485,7 @@ function render() {
   steps.push(card(6, stateOf(Boolean(rep && !rep.fail), done5), t("s6"),
     h("p", { class: "hint" }, t("s6_hint")),
     robot && robot.qgc && h("div", {}, h("p", { class: "hint" }, t("s6_qgc")), h("span", { class: "addr" }, robot.qgc.replace(":", "  :  "))),
+    done5 && !done4 && h("div", { class: "status warn" }, t("s6_tunnel", { pilot })),
     h("div", {}, btn(t("s6_btn"), () => run(6, ["test", "--id", String(robot.id)]), { job: true, disabled: !done5, primary: done5 })),
     rep && h("p", { class: "hint" }, t("s6_last", { time: rep.time })),
     rep && h("ul", { class: "checks" }, rep.checks.filter((c) => c.status !== "SKIP").map((c) => h("li", {},

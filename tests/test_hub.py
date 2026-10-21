@@ -181,3 +181,20 @@ def test_ugv_without_owner_is_hidden(fresh, tmp_path):
     out = server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
     assert "не бачить ніхто: OLD-1" in out
     assert acl_rules(server) == ["iptables -A flu-acl -s 10.150.1.10/32 -d 10.150.16.16/28 -j ACCEPT  # ivan -> UGV FLU-2026-0001"]
+
+
+def test_pilot_or_ugv_from_another_laptop_rejected(fresh):
+    """Ключ пілота чи НРК на іншому ноутбуці: новий ключ тут від'єднав би їх, тож команду не даємо."""
+    prepare(fresh, "ivan", "FLU-2026-0001")
+    hub._set_pilot(fresh, "main", "ivan", 10)  # пілот уже на сервері (відповідь вставлено на тому ноутбуці)
+    (fresh / "secrets" / "operators" / "ivan.json").unlink()
+    with pytest.raises(HubError, match="ключ на іншому ноутбуці"):
+        prepare(fresh, "ivan", "FLU-2026-0002")
+
+    inv = Inventory.load(fresh)
+    inv.assign(1, "main", 1)  # НРК прошито на тому ноутбуці
+    inv.save_robots()
+    (fresh / "secrets" / "robots" / "1.json").unlink()
+    with pytest.raises(HubError, match="на іншому ноутбуці"):
+        prepare(fresh, "petro", "FLU-2026-0001")
+    assert prepare(fresh, "petro", "FLU-2026-0003")["robot_id"] == 2  # новий НРК новому пілоту — можна

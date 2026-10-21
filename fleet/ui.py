@@ -194,7 +194,7 @@ def build_state(root: Path) -> dict:
 
 
 def simple_state(root: Path) -> dict:
-    """Стан для простого режиму: hub-майданчик, пілоти цього ноутбука, НРК, тунель."""
+    """Стан для простого режиму: hub-майданчик, пілоти цього ноутбука, НРК, тунелі пілотів."""
     from .hub import HubError, hub_site
     from .pilot import tunnel_name, tunnel_status, wireguard_installed
 
@@ -203,7 +203,6 @@ def simple_state(root: Path) -> dict:
         site = hub_site(inv)
     except (InventoryError, HubError) as exc:
         return {"fatal": str(exc)}
-    name = tunnel_name(site.name)
     local = sorted(p.stem for p in (root / "secrets" / "operators").glob("*.json"))
     robots = [robot_row(root, inv, r) for r in sorted(inv.robots.values(), key=lambda r: r.id) if r.site == site.name]
     return {
@@ -213,10 +212,25 @@ def simple_state(root: Path) -> dict:
         "pilot_ips": {o.name: str(A.operator_ip(site, o)) for o in inv.operators_on(site.name)},
         "local_pilots": local,
         "robots": robots,
-        "tunnel": {"name": name, "status": tunnel_status(name)},
+        # У кожного пілота цього ноутбука свій тунель; працює щонайбільше один
+        "tunnels": {p: {"name": tunnel_name(site.name, p), "status": tunnel_status(tunnel_name(site.name, p))} for p in local},
         "wireguard": wireguard_installed(),
         "errors": inv.validate(),
     }
+
+
+def pilot_conf(root: Path, pilot: str) -> Path:
+    """Конфіг тунелю пілота: технік віддає його на ноутбук пілота."""
+    from .hub import hub_site
+    from .inventory import NAME_RE
+
+    if not NAME_RE.match(pilot):
+        raise ValueError(T("некоректне ім'я пілота", "invalid pilot name"))
+    path = root / "build" / "sites" / hub_site(Inventory.load(root)).name / "operators" / f"{pilot}.conf"
+    if not path.exists():
+        raise ValueError(T(f"конфігу пілота {pilot} ще немає: спочатку вставте відповідь сервера",
+                           f"there is no config for pilot {pilot} yet: paste the server response first"))
+    return path
 
 
 def install_ssh_key(src: str, host: str) -> str:
@@ -397,6 +411,12 @@ class Handler(BaseHTTPRequestHandler):
                 open_ssh_terminal(host, user, key)
                 ui_log(root, f"ssh: opened terminal {user}@{host}" + (" with .pem key (AWS)" if key else ""))
                 return self._json({"ok": True})
+            if url.path == "/api/simple/open-pilot-conf":
+                path = pilot_conf(root, str(body.get("pilot", "")))
+                if os.name == "nt":
+                    subprocess.Popen(f'explorer /select,"{path}"')  # Провідник із виділеним файлом тунелю
+                ui_log(root, f"open-pilot-conf: {path.relative_to(root)}")
+                return self._json({"path": str(path.relative_to(root))})
             if url.path == "/api/open-logs":
                 path = log_dir(root)
                 if os.name == "nt":

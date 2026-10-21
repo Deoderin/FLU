@@ -117,6 +117,14 @@ def prepare(root: Path, pilot: str, serial: str | None) -> dict:
     inv = Inventory.load(root)
     site = hub_site(inv)
     store = SecretStore(root)
+    # Без ключа тут створився б новий, і сервер замінив би ним старий: пілот або НРК на іншому ноутбуці втратив би зв'язок
+    if pilot in inv.operators and not (store.dir / "operators" / f"{pilot}.json").exists():
+        raise HubError(T(f"пілот {pilot} уже є, але його ключ на іншому ноутбуці: виберіть інше ім'я або перенесіть сюди теку secrets/",
+                         f"pilot {pilot} already exists, but the key is on another laptop: choose another name or copy the secrets/ folder here"))
+    known = next((r for r in inv.robots.values() if r.serial == serial), None)
+    if known and known.provisioned and not (store.dir / "robots" / f"{known.id}.json").exists():
+        raise HubError(T(f"НРК {serial} уже зареєстровано на іншому ноутбуці: додавайте його звідти або перенесіть сюди теку secrets/",
+                         f"UGV {serial} is already registered on another laptop: add it from there or copy the secrets/ folder here"))
     store.operator(pilot)
     robot_id = None
     if serial:

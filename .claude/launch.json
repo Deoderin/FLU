@@ -4,9 +4,9 @@
     {
       "name": "fleet-ui",
       "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", ".venv\\Scripts\\python.exe", "-m", "fleet", "ui", "--no-browser"],
-      "port": 8765,
-      "url": "http://localhost:8765"
+      "runtimeArgs": ["/c", ".venv\\Scripts\\python.exe", "-m", "fleet", "ui", "--no-browser", "--port", "8766"],
+      "port": 8766,
+      "url": "http://127.0.0.1:8766"
     },
     {
       "name": "fleet-launcher",

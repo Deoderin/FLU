@@ -223,3 +223,28 @@ def test_port_taken_by_another_program(tmp_path, capsys):
         other.listen()
         assert serve(tmp_path, port=other.getsockname()[1], open_browser=False) == 2
     assert "зайнятий іншою програмою" in capsys.readouterr().err
+
+
+def test_each_local_pilot_has_own_tunnel(simple_ui, monkeypatch):
+    import fleet.pilot
+    import fleet.ui
+
+    assert fleet.pilot.tunnel_name("main", "pilot-2") == "flu-main-pilot-2"
+    monkeypatch.setattr(fleet.pilot, "tunnel_status", lambda name: "running" if name == "flu-main-ivan" else "missing")
+    call(simple_ui, "/api/simple/prepare", {"pilot": "ivan", "serial": "FLU-2026-0001"})
+    call(simple_ui, "/api/simple/prepare", {"pilot": "petro", "serial": "FLU-2026-0002"})
+    state = json.loads(call(simple_ui, "/api/simple")[1])
+    assert state["tunnels"] == {"ivan": {"name": "flu-main-ivan", "status": "running"},
+                                "petro": {"name": "flu-main-petro", "status": "missing"}}
+
+    # файл тунелю для ноутбука пілота: лише після відповіді сервера і лише для правильного імені
+    opened = []
+    monkeypatch.setattr(fleet.ui.subprocess, "Popen", opened.append)
+    status, body = call(simple_ui, "/api/simple/open-pilot-conf", {"pilot": "ivan"})
+    assert status == 400 and "ще немає" in json.loads(body)["error"]
+    assert call(simple_ui, "/api/simple/open-pilot-conf", {"pilot": "../secrets"})[0] == 400
+    conf = simple_ui.root / "build" / "sites" / "main" / "operators" / "ivan.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text("[Interface]\n")
+    status, body = call(simple_ui, "/api/simple/open-pilot-conf", {"pilot": "ivan"})
+    assert status == 200 and json.loads(body)["path"] == str(Path("build/sites/main/operators/ivan.conf"))
