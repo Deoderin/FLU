@@ -22,6 +22,7 @@ if systemctl is-active --quiet "wg-quick@$IFACE"; then
   # Apply peer changes without dropping live tunnels.
   # (Address / ListenPort / PostUp changes need: systemctl restart wg-quick@$IFACE)
   wg syncconf "$IFACE" <(wg-quick strip "$IFACE")
+  ip link set dev "$IFACE" mtu {{ mtu }}   # syncconf MTU не міняє, а тунелі від цього не рвуться
 else
   systemctl enable --now "wg-quick@$IFACE"
 fi

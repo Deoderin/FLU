@@ -102,9 +102,11 @@ def test_round_trip(fresh, tmp_path):
     assert "allowed-address=10.150.0.0/24,10.150.1.0/24" in rsc
     assert '/ip route add dst-address=10.150.1.0/24 gateway=wg-main' in rsc
     assert "dst-address=192.168.88.8-192.168.88.9" in rsc  # камери .8 і .9
+    assert "mtu=1280" in rsc and "MTU = 1280" in pilot_conf
 
     conf = (server.dir / "flu.conf").read_text()
     assert "AllowedIPs = 10.150.1.10/32" in conf and "AllowedIPs = 10.150.0.2/32, 10.150.16.0/28" in conf
+    assert "MTU = 1280" in conf
 
     # той самий пілот і НРК вдруге — ті самі адреси; другий НРК — наступний слот
     assert server.run(cmd).count("слот 1") == 1

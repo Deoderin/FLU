@@ -16,3 +16,8 @@
 #     site: main
 #     service_tunnel: false
 robots:
+  - id: 1
+    serial: bort-1
+    platform: flu-v1
+    site: main
+    service_tunnel: false

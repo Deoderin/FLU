@@ -23,7 +23,7 @@ from .inventory import Inventory, Robot, Site
 from .keystore import SecretError, SecretStore, wg_pubkey
 from .params import expected_params, format_parm, load_ignore, parse_parm, read_parm
 
-MTU = 1380  # у LTE MTU менший за стандартний: без запасу фрагментація псує відео
+MTU = 1280  # мінімум IPv6: проходить і через LTE, і через Starlink без фрагментації, яка псує відео
 MEDIAMTX_VERSION = "1.21.1"
 SVC_LISTEN_PORT = 13230  # порт WireGuard сервісного тунелю на MikroTik
 ARBITER_FILES = ("Dockerfile", "requirements.txt", "arbiter.py", "policy.py", "panel.html")
@@ -304,7 +304,7 @@ class Renderer:
         paths.append(write(server / "docker-compose.yml", self.tpl(
             "server/docker-compose.yml.j2", site=site, server_ip=sip, mediamtx_version=MEDIAMTX_VERSION)))
         paths.append(write(server / "install.sh", self.tpl(
-            "server/install.sh.j2", title=f"site {site.name}", iface=site.iface, with_stack=True)))
+            "server/install.sh.j2", title=f"site {site.name}", iface=site.iface, mtu=MTU, with_stack=True)))
 
         src = self.inv.root / "server" / "arbiter"
         for name in ARBITER_FILES:
@@ -449,7 +449,7 @@ class Renderer:
             robots=robots,
         )))
         paths.append(write(out / "server" / "install.sh", self.tpl(
-            "server/install.sh.j2", title="service tunnel hub", iface=svc.iface, with_stack=False)))
+            "server/install.sh.j2", title="service tunnel hub", iface=svc.iface, mtu=MTU, with_stack=False)))
         return paths
 
     # --- усе разом -----------------------------------------------------------

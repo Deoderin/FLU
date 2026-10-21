@@ -39,6 +39,7 @@ TUNNEL=10.150.0         # .1 — сервер, НРК зі слотом N — .(
 PILOTS=10.150.1         # пілот з номером K — .K
 LANS3=16                # мережі НРК: 10.150.16.0/20, по /28 на НРК
 MAX=250
+MTU=1280                # як на роутерах НРК і в тунелях пілотів (fleet/render.py)
 
 # --- 1. WireGuard ----------------------------------------------------------------
 if command -v wg >/dev/null 2>&1; then
@@ -104,7 +105,7 @@ lan_of() { local o=$((($1 - 1) * 16)); echo "10.150.$((LANS3 + o / 256)).$((o % 
   echo "Address = $TUNNEL.1/24"
   echo "ListenPort = $PORT"
   echo "PrivateKey = $(cat "$KEYFILE")"
-  echo "MTU = 1380"
+  echo "MTU = $MTU"
   echo "# Pilots may reach UGV networks; UGVs only answer; nothing else is forwarded"
   echo "PostUp = sysctl -q -w net.ipv4.ip_forward=1"
   echo "PostUp = iptables -I FORWARD -i %i -j DROP"
@@ -135,6 +136,7 @@ chmod 600 "$CONF"
 if [ -z "${FLU_TEST:-}" ]; then
   if ip link show "$IFACE" >/dev/null 2>&1; then
     wg syncconf "$IFACE" <(wg-quick strip "$IFACE")   # нові піри без розриву наявних тунелів
+    ip link set dev "$IFACE" mtu "$MTU"                # syncconf MTU не міняє, а тунелі від цього не рвуться
   else
     systemctl enable --now "wg-quick@$IFACE" >/dev/null 2>&1 || wg-quick up "$IFACE" >/dev/null
   fi
