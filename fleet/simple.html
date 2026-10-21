@@ -123,7 +123,7 @@ const I18N = {
     key_fw: "На AWS відкрийте ще й порт: EC2 → ваш сервер → Security → Security group → Edit inbound rules → Add rule: Custom UDP, порт 51820 (або той, що назве сервер), джерело 0.0.0.0/0.",
     s2b: "2. Скопіюйте команду й вставте її на сервері", s2b_btn: "Скопіювати команду", copied: "Скопійовано ✓",
     s2b_hint: "У вікні сервера клацніть правою кнопкою миші — команда вставиться — і натисніть Enter. Зачекайте до хвилини.",
-    s2b_both: "Команда сама розбереться: якщо WireGuard на сервері ще немає — встановить, якщо вже є — лише додасть пілота й НРК.",
+    s2b_both: "Команда сама розбереться: якщо WireGuard на сервері ще немає — встановить, якщо вже є — лише додасть пілота й НРК. НРК бачитиме лише цей пілот.",
     show_cmd: "Показати команду", hide_cmd: "Сховати команду",
     s3: "Відповідь сервера", s3_hint: "Сервер виведе рядок, що починається з FLU1: і закінчується на :END. Виділіть його мишею повністю, скопіюйте (Enter або Ctrl+C) і вставте сюди.",
     s3_ph: "FLU1:....:END", s3_btn: "Застосувати", s3_done: "Сервер {endpoint} · ваша адреса {pilot_ip} · НРК {name}, слот {slot}",
@@ -147,7 +147,7 @@ const I18N = {
     running: "Виконується… {s} с", done: "Готово ✓", failed: "Не вийшло — подробиці нижче", log: "Хід виконання",
     chk: { inventory: "налаштування", registration: "реєстрація", mavlink: "зв'язок з НРК (MAVLink)", params: "параметри", gps: "GPS",
            battery: "батарея", cameras: "камери", mikrotik: "роутер", mikrotik_config: "роутер: конфіг", site_tunnel: "тунель роутера",
-           mikrotik_drift: "роутер: зміни", lte: "LTE", arbiter: "арбітр", cam1: "камера 1", cam2: "камера 2" },
+           mikrotik_drift: "роутер: зміни", lte: "LTE", arbiter: "арбітр", cam1: "передня камера", cam2: "задня камера" },
   },
   en: {
     title: "FLU · UGV setup", adv: "Advanced mode",
@@ -164,7 +164,7 @@ const I18N = {
     key_fw: "On AWS also open the port: EC2 → your server → Security → Security group → Edit inbound rules → Add rule: Custom UDP, port 51820 (or the one the server names), source 0.0.0.0/0.",
     s2b: "2. Copy the command and paste it on the server", s2b_btn: "Copy command", copied: "Copied ✓",
     s2b_hint: "Right-click in the server window - the command is pasted - and press Enter. Wait up to a minute.",
-    s2b_both: "The command figures it out itself: if the server has no WireGuard yet, it installs it; if it has, it only adds the pilot and the UGV.",
+    s2b_both: "The command figures it out itself: if the server has no WireGuard yet, it installs it; if it has, it only adds the pilot and the UGV. Only this pilot will see the UGV.",
     show_cmd: "Show command", hide_cmd: "Hide command",
     s3: "Server response", s3_hint: "The server prints a line that starts with FLU1: and ends with :END. Select all of it with the mouse, copy it (Enter or Ctrl+C) and paste it here.",
     s3_ph: "FLU1:....:END", s3_btn: "Apply", s3_done: "Server {endpoint} · your address {pilot_ip} · UGV {name}, slot {slot}",
@@ -188,7 +188,7 @@ const I18N = {
     running: "Running… {s} s", done: "Done ✓", failed: "It did not work - details below", log: "Progress",
     chk: { inventory: "setup", registration: "registration", mavlink: "link to the UGV (MAVLink)", params: "parameters", gps: "GPS",
            battery: "battery", cameras: "cameras", mikrotik: "router", mikrotik_config: "router: config", site_tunnel: "router tunnel",
-           mikrotik_drift: "router: changes", lte: "LTE", arbiter: "arbiter", cam1: "camera 1", cam2: "camera 2" },
+           mikrotik_drift: "router: changes", lte: "LTE", arbiter: "arbiter", cam1: "front camera", cam2: "rear camera" },
   },
 };
 

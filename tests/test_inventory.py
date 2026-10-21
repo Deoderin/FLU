@@ -28,7 +28,7 @@ def test_addresses_follow_slot(inv):
     assert str(A.robot_tunnel_ip(acme, 1)) == "10.150.0.2"
     assert str(A.lan_block(acme, 1)) == "10.150.16.0/28"
     assert str(A.lan_block(acme, 2)) == "10.150.16.16/28"
-    assert str(A.mapped_ip(acme, 2, "cam2")) == "10.150.16.25"  # камери НРК — .8 і .9
+    assert str(A.mapped_ip(acme, 2, "cam2")) == "10.150.16.25"  # задня камера ззовні — .9 блоку (у НРК — .109)
     assert A.arbiter_port(3) == 5763
     assert A.capacity(acme) == 250
     assert A.capacity(inv.site("initech")) == 4  # robot_lans /26 = чотири блоки /28

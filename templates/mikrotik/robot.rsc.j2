@@ -25,7 +25,7 @@ add bridge=br-lan interface={{ platform.ports.cam1 }} comment="fleet: cam1"
 add bridge=br-lan interface={{ platform.ports.cam2 }} comment="fleet: cam2"
 add bridge=br-lan interface={{ platform.ports.bench }} comment="fleet: bench"
 /ip address add address={{ lan.router }}/24 interface=br-lan comment="fleet"
-/ip pool add name=fleet-lan ranges=192.168.88.100-192.168.88.199
+/ip pool add name=fleet-lan ranges=192.168.88.200-192.168.88.249
 /ip dhcp-server add name=fleet-lan interface=br-lan address-pool=fleet-lan disabled=no
 /ip dhcp-server network add address={{ lan.net }} gateway={{ lan.router }} comment="fleet"
 /interface list add name=fleet-lan

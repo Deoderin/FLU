@@ -22,3 +22,9 @@ robots:
     site: main
     slot: 1
     service_tunnel: false
+  - id: 2
+    serial: '4545511'
+    platform: flu-v1
+    site: main
+    slot: 2
+    service_tunnel: false

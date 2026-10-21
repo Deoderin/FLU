@@ -22,7 +22,7 @@ If you need to connect from other addresses, tell us and we will update the UGVs
 
 ## UGV addresses
 
-| UGV | Tunnel address | UGV network | MAVLink (TCP) | Camera 1 (RTSP) | Camera 2 (RTSP) |
+| UGV | Tunnel address | UGV network | MAVLink (TCP) | Front camera (RTSP) | Rear camera (RTSP) |
 |---|---|---|---|---|---|
 {% for r in robots %}
 | {{ r.name }} | {{ r.tunnel_ip }} | {{ r.lan_block }} | {{ r.fc_ip }}:{{ r.mav_port }} | rtsp://{{ r.cam1_ip }}:554{{ r.rtsp_path }} | rtsp://{{ r.cam2_ip }}:554{{ r.rtsp_path }} |

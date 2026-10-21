@@ -1,4 +1,4 @@
-"""Камери на стенді: перенесення із заводської IP-адреси на адресу НРК.
+"""Камери на стенді: перенесення із заводської (або старої .8/.9) IP-адреси на адресу НРК.
 
 Обидві камери приходять з однаковою заводською IP-адресою, тому розрізняємо їх
 за портом MikroTik: поки налаштовується камера 1, порт камери 2 вимкнено, і навпаки.
@@ -21,6 +21,7 @@ from .keystore import SecretStore
 from .mikrotik import MikroTik
 
 BENCH_TAG = "fleet-bench"
+OLD_HOSTS = (8, 9)  # адреси камер 192.168.88.x до переходу на .108/.109: такі камери теж переносимо
 
 
 class CameraError(Exception):
@@ -118,6 +119,7 @@ def setup_cameras(inv: Inventory, store: SecretStore, robot: Robot, mt: MikroTik
     helper = factory_net.network_address + (251 if int(factory) & 255 == 250 else 250)
     mask, gateway = "255.255.255.0", str(A.lan_ip("router"))
     cam_ports = {cam: ports[cam] for cam in A.CAMERAS}
+    sources = [str(factory)] + [str(A.LAN.network_address + n) for n in OLD_HOSTS]
 
     # Тимчасова адреса в заводській мережі та NAT: стенд за MikroTik дістає до камери,
     # а камера відповідає MikroTik, не знаючи маршруту до 192.168.88.0/24
@@ -135,15 +137,17 @@ def setup_cameras(inv: Inventory, store: SecretStore, robot: Robot, mt: MikroTik
             mt.run(f"/interface enable {cam_ports[cam]}")
             mt.run(f'/ip arp remove [find address="{factory}"]', check=False)
             time.sleep(3)
-            cam_api = vendor(str(factory), user, password)
-            if not cam_api.ping():
+            # Порт іншої камери вимкнено, тож хто відповів на заводській чи старій адресі — це саме ця камера
+            source = next((ip for ip in sources if vendor(ip, user, password).ping()), None)
+            if source is None:
                 raise CameraError(T(
-                    f"{cam}: не відповідає на {factory} через порт {cam_ports[cam]}. Перевірте кабель і що камеру "
-                    f"активовано паролем із secrets/robots/{robot.id}.json (camera_password)",
-                    f"{cam}: no answer at {factory} on port {cam_ports[cam]}. Check the cable and that the camera "
-                    f"is activated with the password from secrets/robots/{robot.id}.json (camera_password)",
+                    f"{cam}: не відповідає ні на {', '.join(sources)} через порт {cam_ports[cam]}. Перевірте кабель "
+                    f"і що камеру активовано паролем із secrets/robots/{robot.id}.json (camera_password)",
+                    f"{cam}: no answer at {', '.join(sources)} on port {cam_ports[cam]}. Check the cable and that "
+                    f"the camera is activated with the password from secrets/robots/{robot.id}.json (camera_password)",
                 ))
-            log(f"{cam}: {factory} -> {target}")
+            cam_api = vendor(source, user, password)
+            log(f"{cam}: {source} -> {target}")
             cam_api.set_address(target, mask, gateway)
             for p in others:
                 mt.run(f"/interface enable {p}")

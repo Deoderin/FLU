@@ -1,6 +1,7 @@
 {#- Блок майданчика на MikroTik: тунель, адреса, netmap і списки доступу.
     Усі об'єкти позначені comment=tag, тому майданчик можна цілком видалити
     або «підтвердити» (переїзд: tag "fleet-site:X pending" -> "fleet-site:X").
+    dst-nat камер стоїть перед netmap: камери (.108/.109) лежать поза блоком netmap 192.168.88.0/28.
     Правила файрвола посилаються на списки fleet-sites / fleet-sources / fleet-mgmt,
     тож під час додавання майданчика їхній порядок чіпати не треба.
     Увесь вивід — лише ASCII: RouterOS погано переносить UTF-8. -#}
@@ -13,6 +14,9 @@
 /ip route add dst-address={{ net }} gateway={{ s.iface }} comment="{{ s.tag }}"
 {% endfor %}
 /interface list member add list=fleet-sites interface={{ s.iface }} comment="{{ s.tag }}"
+{% for n in s.dstnat %}
+/ip firewall nat add chain=dstnat in-interface={{ s.iface }} dst-address={{ n.outside }} action=dst-nat to-addresses={{ n.inside }} comment="{{ s.tag }}"
+{% endfor %}
 /ip firewall nat add chain=dstnat in-interface={{ s.iface }} dst-address={{ s.lan_block }} action=netmap to-addresses={{ s.lan_mapped }} comment="{{ s.tag }}"
 {% for src in s.sources %}
 /ip firewall address-list add list=fleet-sources address={{ src }} comment="{{ s.tag }}"

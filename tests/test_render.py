@@ -170,6 +170,61 @@ def test_drift_ignores_what_routeros_changes_itself():
         "+ /system clock set time-zone-autodetect=no time-zone-name=UTC"]
 
 
-def test_lan_addresses_fit_mapped_block():
+def test_every_device_reachable_through_tunnel():
+    """Ззовні кожен пристрій має свою адресу в блоці /28: роутер і ФК — через netmap, камери — через dst-nat."""
+    assert len(set(A.MAPPED.values())) == len(A.MAPPED)
     for host in A.HOSTS:
-        assert A.lan_ip(host) in A.LAN_MAPPED
+        assert 0 < A.MAPPED[host] < A.BLOCK_SIZE - 1
+        if A.lan_ip(host) in A.LAN_MAPPED:
+            assert A.MAPPED[host] == A.HOSTS[host]  # netmap зберігає номер хоста
+    assert A.dstnat_hosts() == ["cam1", "cam2"]
+    assert (str(A.lan_ip("cam1")), str(A.lan_ip("cam2"))) == ("192.168.88.108", "192.168.88.109")
+
+
+def test_cameras_dstnat_before_netmap(provisioned, store):
+    """Камери .108/.109 лежать поза блоком netmap: їхній dst-nat має спрацювати раніше за netmap."""
+    robot = provisioned.robot(1)
+    rsc, _ = Renderer(provisioned, store).robot_rsc(robot, provisioned.site(robot.site), robot.slot)
+    nat = [line for line in rsc.splitlines() if line.startswith("/ip firewall nat add chain=dstnat")]
+    assert [re.search(r"dst-address=(\S+) action=(\S+) to-addresses=(\S+)", n).groups() for n in nat] == [
+        ("10.150.16.8", "dst-nat", "192.168.88.108"),
+        ("10.150.16.9", "dst-nat", "192.168.88.109"),
+        ("10.150.16.0/28", "netmap", "192.168.88.0/28"),
+    ]
+    assert "dst-address=192.168.88.108-192.168.88.109 protocol=tcp dst-port=554" in rsc  # RTSP пропускає файрвол
+    assert "ranges=192.168.88.200-192.168.88.249" in rsc  # DHCP не роздає адреси камер
+
+
+def test_cameras_move_from_old_addresses(provisioned, store, monkeypatch):
+    """Камери, які вже стояли на .8/.9, переїжджають на .108/.109; передню й задню розрізняємо за портом."""
+    import fleet.cameras as C
+
+    monkeypatch.setattr(C.time, "sleep", lambda s: None)
+    ports = {"cam1": "ether2", "cam2": "ether3"}
+    at = {"cam1": "192.168.88.9", "cam2": "192.168.88.8"}  # навмисно навхрест: адреса нічого не каже про камеру
+    disabled = set()
+
+    def live(ip):
+        return next((c for c, addr in at.items() if addr == ip and ports[c] not in disabled), None)
+
+    class FakeRouter:
+        def run(self, command, check=True):
+            m = re.match(r"/interface (disable|enable) (\S+)$", command)
+            if m:
+                (disabled.add if m[1] == "disable" else disabled.discard)(m[2])
+            return ""
+
+    class FakeCamera:
+        def __init__(self, ip, user, password):
+            self.ip = ip
+
+        def ping(self):
+            return live(self.ip) is not None
+
+        def set_address(self, ip, mask, gateway):
+            at[live(self.ip)] = ip
+
+    monkeypatch.setitem(C.VENDORS, "hikvision", FakeCamera)
+    C.setup_cameras(provisioned, store, provisioned.robot(1), FakeRouter(), log=lambda *_: None)
+    assert at == {"cam1": "192.168.88.108", "cam2": "192.168.88.109"}
+    assert not disabled  # усі порти знову ввімкнено

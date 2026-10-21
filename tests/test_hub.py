@@ -101,7 +101,7 @@ def test_round_trip(fresh, tmp_path):
     rsc = (fresh / "build" / "robots" / "nrk-001" / "robot.rsc").read_text("utf-8")
     assert "allowed-address=10.150.0.0/24,10.150.1.0/24" in rsc
     assert '/ip route add dst-address=10.150.1.0/24 gateway=wg-main' in rsc
-    assert "dst-address=192.168.88.8-192.168.88.9" in rsc  # камери .8 і .9
+    assert "dst-address=192.168.88.108-192.168.88.109" in rsc  # передня і задня камери
     assert "mtu=1280" in rsc and "MTU = 1280" in pilot_conf
 
     conf = (server.dir / "flu.conf").read_text()
@@ -143,3 +143,41 @@ def test_damaged_response():
 
 def test_script_has_lf_endings():
     assert b"\r\n" not in (REPO / hub.SCRIPT).read_bytes()
+
+
+def acl_rules(server) -> list[str]:
+    return [line for line in (server.dir / "flu-acl.sh").read_text().splitlines() if line.startswith("iptables -A flu-acl")]
+
+
+@needs_bash
+def test_each_pilot_sees_only_own_ugvs(fresh, tmp_path):
+    server = FakeServer(tmp_path)
+    server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    out = server.run(prepare(fresh, "petro", "FLU-2026-0002")["command"])
+    assert "НРК FLU-2026-0002 бачить лише пілот petro" in out
+    assert acl_rules(server) == [
+        "iptables -A flu-acl -s 10.150.1.10/32 -d 10.150.16.0/28 -j ACCEPT  # ivan -> UGV FLU-2026-0001",
+        "iptables -A flu-acl -s 10.150.1.11/32 -d 10.150.16.16/28 -j ACCEPT  # petro -> UGV FLU-2026-0002",
+    ]
+    conf = (server.dir / "flu.conf").read_text()
+    assert f"PostUp = sh {(server.dir / 'flu-acl.sh').as_posix()}" in conf
+    assert "10.150.16.0/20 -j ACCEPT" not in conf  # старе правило «усі пілоти до всіх НРК»
+
+    # передача: той самий НРК з іншим пілотом
+    out = server.run(prepare(fresh, "petro", "FLU-2026-0001")["command"])
+    assert "НРК FLU-2026-0001 передано від пілота ivan пілоту petro" in out
+    assert acl_rules(server) == [
+        "iptables -A flu-acl -s 10.150.1.11/32 -d 10.150.16.0/28 -j ACCEPT  # petro -> UGV FLU-2026-0001",
+        "iptables -A flu-acl -s 10.150.1.11/32 -d 10.150.16.16/28 -j ACCEPT  # petro -> UGV FLU-2026-0002",
+    ]
+
+
+@needs_bash
+def test_ugv_without_owner_is_hidden(fresh, tmp_path):
+    server = FakeServer(tmp_path)
+    server.dir.mkdir(parents=True)
+    # запис, зроблений до появи власників: чотири колонки
+    (server.dir / "flu-peers.tsv").write_text(f"robot\t1\tOLD-1\t{wg_pubkey(wg_genkey())}\n")
+    out = server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    assert "не бачить ніхто: OLD-1" in out
+    assert acl_rules(server) == ["iptables -A flu-acl -s 10.150.1.10/32 -d 10.150.16.16/28 -j ACCEPT  # ivan -> UGV FLU-2026-0001"]

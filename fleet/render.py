@@ -111,6 +111,7 @@ class Renderer:
             "prefix": site.network.tunnel.prefixlen,
             "lan_block": str(A.lan_block(site, slot)),
             "lan_mapped": str(A.LAN_MAPPED),
+            "dstnat": [{"outside": str(A.mapped_ip(site, slot, h)), "inside": str(A.lan_ip(h))} for h in A.dstnat_hosts()],
             "sources": site.sources(),
             "mgmt": site.mgmt_sources(),
         }
@@ -328,7 +329,7 @@ class Renderer:
             T("   MAVLink system ID наземної станції лишіть 255 (за замовчуванням).",
               "   Keep the ground station MAVLink system ID at 255 (the default)."),
             "",
-            T("| НРК | MAVLink (TCP) | Камера 1 | Камера 2 |", "| UGV | MAVLink (TCP) | Camera 1 | Camera 2 |"),
+            T("| НРК | MAVLink (TCP) | Передня камера | Задня камера |", "| UGV | MAVLink (TCP) | Front camera | Rear camera |"),
             "|---|---|---|---|",
         ]
         for r in robots:

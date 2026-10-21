@@ -43,23 +43,23 @@
   </g>
   <g>
     <rect x="620" y="108" width="200" height="56" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
-    <text x="720" y="131" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Мережевий адаптер ФК</text>
-    <text x="720" y="151" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.2, TCP 5760</text>
+    <text x="720" y="131" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Передня камера</text>
+    <text x="720" y="151" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.108</text>
 
     <rect x="620" y="178" width="200" height="56" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
-    <text x="720" y="201" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Камера 1</text>
-    <text x="720" y="221" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.8</text>
+    <text x="720" y="201" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Задня камера</text>
+    <text x="720" y="221" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.109</text>
 
     <rect x="620" y="248" width="200" height="56" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
-    <text x="720" y="271" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Камера 2</text>
-    <text x="720" y="291" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.9</text>
+    <text x="720" y="271" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Мережевий адаптер ФК</text>
+    <text x="720" y="291" text-anchor="middle" font-size="12.5" fill="#475569">192.168.88.2, TCP 5760</text>
 
     <rect x="620" y="314" width="200" height="56" rx="10" fill="#fff4ec" stroke="#ff4d1a" stroke-width="2"/>
     <text x="720" y="337" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Ноутбук (стенд)</text>
-    <text x="720" y="357" text-anchor="middle" font-size="12.5" fill="#475569">DHCP 192.168.88.100–199</text>
+    <text x="720" y="357" text-anchor="middle" font-size="12.5" fill="#475569">DHCP 192.168.88.200–249</text>
   </g>
 
   <!-- USB до ФК -->
-  <path d="M820 342 C 872 342, 872 136, 824 136" fill="none" stroke="#ff4d1a" stroke-width="2.5" stroke-dasharray="7 5" marker-end="url(#u)"/>
-  <text x="905" y="240" text-anchor="middle" font-size="12.5" font-weight="600" fill="#c2410c" transform="rotate(-90 905 240)">USB до ФК (параметри)</text>
+  <path d="M820 342 C 872 342, 872 276, 824 276" fill="none" stroke="#ff4d1a" stroke-width="2.5" stroke-dasharray="7 5" marker-end="url(#u)"/>
+  <text x="905" y="300" text-anchor="middle" font-size="12.5" font-weight="600" fill="#c2410c" transform="rotate(-90 905 300)">USB до ФК</text>
 </svg>

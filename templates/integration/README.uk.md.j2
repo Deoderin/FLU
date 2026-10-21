@@ -22,7 +22,7 @@
 
 ## Адреси НРК
 
-| НРК | Адреса в тунелі | Мережа НРК | MAVLink (TCP) | Камера 1 (RTSP) | Камера 2 (RTSP) |
+| НРК | Адреса в тунелі | Мережа НРК | MAVLink (TCP) | Передня камера (RTSP) | Задня камера (RTSP) |
 |---|---|---|---|---|---|
 {% for r in robots %}
 | {{ r.name }} | {{ r.tunnel_ip }} | {{ r.lan_block }} | {{ r.fc_ip }}:{{ r.mav_port }} | rtsp://{{ r.cam1_ip }}:554{{ r.rtsp_path }} | rtsp://{{ r.cam2_ip }}:554{{ r.rtsp_path }} |

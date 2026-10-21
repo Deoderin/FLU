@@ -1,8 +1,9 @@
 """Адресний план: усі адреси НРК виводяться з майданчика та його slot.
 
 Усередині НРК мережа завжди однакова (192.168.88.0/24). Ззовні, через тунель
-майданчика, НРК видно блоком /28 з robot_lans: MikroTik робить netmap
-блок -> 192.168.88.0/28, тож адреса пристрою = початок блоку + номер хоста.
+майданчика, НРК видно блоком /28 з robot_lans: адреса пристрою = початок блоку + MAPPED[пристрій].
+Роутер і ФК потрапляють у блок через netmap (блок -> 192.168.88.0/28), а камери стоять
+на .108/.109, за межами /28, тож MikroTik веде до них окремим dst-nat.
 """
 from __future__ import annotations
 
@@ -15,8 +16,9 @@ if TYPE_CHECKING:
 
 LAN = ipaddress.ip_network("192.168.88.0/24")
 LAN_MAPPED = ipaddress.ip_network("192.168.88.0/28")
-HOSTS = {"router": 1, "fc": 2, "cam1": 8, "cam2": 9}
-CAMERAS = ("cam1", "cam2")
+HOSTS = {"router": 1, "fc": 2, "cam1": 108, "cam2": 109}  # адреса в мережі НРК: 192.168.88.<номер>
+MAPPED = {"router": 1, "fc": 2, "cam1": 8, "cam2": 9}     # номер у блоці /28 майданчика
+CAMERAS = ("cam1", "cam2")  # cam1 — передня, cam2 — задня
 BLOCK_PREFIX = LAN_MAPPED.prefixlen
 BLOCK_SIZE = LAN_MAPPED.num_addresses
 MAX_SLOT = 250  # slot — це MAVLink SYSID; 255 зайнятий наземною станцією
@@ -45,7 +47,12 @@ def lan_block(site: Site, slot: int) -> IPv4Network:
 
 
 def mapped_ip(site: Site, slot: int, host: str) -> IPv4Address:
-    return lan_block(site, slot).network_address + HOSTS[host]
+    return lan_block(site, slot).network_address + MAPPED[host]
+
+
+def dstnat_hosts() -> list[str]:
+    """Пристрої поза 192.168.88.0/28: netmap до них не веде, потрібен окремий dst-nat."""
+    return [h for h in HOSTS if lan_ip(h) not in LAN_MAPPED]
 
 
 def operator_ip(site: Site, op: Operator) -> IPv4Address:
