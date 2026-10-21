@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -218,18 +219,48 @@ def simple_state(root: Path) -> dict:
     }
 
 
-def open_ssh_terminal(host: str, user: str) -> None:
-    """Нове вікно консолі з `ssh user@host`: пілот лише вводить пароль і вставляє команду."""
+def install_ssh_key(src: str, host: str) -> str:
+    """AWS: ключ .pem сервера -> ~/.ssh/flu-<host>.pem; повертає шлях відносно домашньої теки.
+
+    ssh у Windows відкидає ключ, до якого мають доступ інші користувачі (UNPROTECTED PRIVATE KEY FILE),
+    а файл, скопійований у ~/.ssh, успадковує права лише власника. Відносний шлях з перевіреним host
+    іде в командний рядок cmd без лапок і спецсимволів.
+    """
+    path = Path(src.strip().strip('"'))  # «Копіювати як шлях» у Провіднику додає лапки
+    if not path.is_file():
+        raise ValueError(T(f"файл ключа не знайдено: {path}", f"key file not found: {path}"))
+    data = path.read_bytes()
+    if b"PuTTY-User-Key-File" in data:
+        raise ValueError(T("це ключ PuTTY (.ppk), а потрібен .pem: у PuTTYgen — Conversions → Export OpenSSH key",
+                           "this is a PuTTY key (.ppk), a .pem is needed: in PuTTYgen - Conversions -> Export OpenSSH key"))
+    if b"PRIVATE KEY" not in data:
+        raise ValueError(T(f"{path.name} — не файл ключа .pem", f"{path.name} is not a .pem key file"))
+    rel = f".ssh/flu-{host}.pem"
+    dst = Path.home() / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_bytes(data)
+    return rel
+
+
+def open_ssh_terminal(host: str, user: str, key: str = "") -> None:
+    """Нове вікно консолі з `ssh user@host`: пілот лише вводить пароль і вставляє команду.
+
+    key — файл ключа .pem для серверів AWS: там вхід лише за ключем, без пароля.
+    """
     if not HOST_RE.match(host) or not USER_RE.match(user):
         raise ValueError(T("некоректна адреса сервера або ім'я користувача", "invalid server address or user name"))
     if os.name != "nt":
-        raise ValueError(T(f"відкрийте термінал і виконайте: ssh {user}@{host}", f"open a terminal and run: ssh {user}@{host}"))
-    # start "" — порожній заголовок вікна, далі сама команда
-    subprocess.Popen(["cmd", "/c", "start", "", "cmd", "/k", "ssh", f"{user}@{host}"], cwd=str(Path.home()))
+        hint = f"ssh -i {key.strip()} {user}@{host}" if key.strip() else f"ssh {user}@{host}"
+        raise ValueError(T(f"відкрийте термінал і виконайте: {hint}", f"open a terminal and run: {hint}"))
+    ssh = ["ssh", "-i", install_ssh_key(key, host)] if key.strip() else ["ssh"]
+    # start "" — порожній заголовок вікна, далі сама команда; cwd — домашня тека, від неї шлях до ключа
+    subprocess.Popen(["cmd", "/c", "start", "", "cmd", "/k", *ssh, f"{user}@{host}"], cwd=str(Path.home()))
 
 
 class UiServer(ThreadingHTTPServer):
     daemon_threads = True
+    # У Windows SO_REUSEADDR дає другому fleet ui зайняти той самий порт, і дві копії ділять запити між собою
+    allow_reuse_address = os.name != "nt"
 
     def __init__(self, address: tuple[str, int], root: Path):
         super().__init__(address, Handler)
@@ -362,8 +393,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"link": link, "routers": routers})
             if url.path == "/api/simple/ssh":
                 host, user = str(body.get("host", "")).strip(), str(body.get("user", "root")).strip() or "root"
-                open_ssh_terminal(host, user)
-                ui_log(root, f"ssh: opened terminal {user}@{host}")
+                key = str(body.get("key", "")).strip()
+                open_ssh_terminal(host, user, key)
+                ui_log(root, f"ssh: opened terminal {user}@{host}" + (" with .pem key (AWS)" if key else ""))
                 return self._json({"ok": True})
             if url.path == "/api/open-logs":
                 path = log_dir(root)
@@ -381,10 +413,31 @@ class Handler(BaseHTTPRequestHandler):
         return self._error(404, T("немає такої сторінки", "no such page"))
 
 
-def serve(root: Path, port: int = 8765, open_browser: bool = True) -> None:
-    server = UiServer(("127.0.0.1", port), root)
+def ui_running(url: str) -> bool:
+    """На цьому порту вже відповідає fleet ui (наприклад, ярлик клацнули вдруге)."""
+    try:
+        with urllib.request.urlopen(url, timeout=2) as r:
+            return b"FLU" in r.read()
+    except (OSError, ValueError):
+        return False
+
+
+def serve(root: Path, port: int = 8765, open_browser: bool = True) -> int:
     url = f"http://127.0.0.1:{port}/"
+    try:
+        server = UiServer(("127.0.0.1", port), root)
+    except OSError:
+        if not ui_running(url):
+            print(T(f"помилка: порт {port} зайнятий іншою програмою. Закрийте її або запустіть fleet ui --port {port + 1}",
+                    f"error: port {port} is used by another program. Close it or run fleet ui --port {port + 1}"), file=sys.stderr)
+            return 2
+        print(T(f"fleet ui вже працює — відкриваю {url}", f"fleet ui is already running - opening {url}"), flush=True)
+        if open_browser:
+            webbrowser.open(url)
+        return 0
     print(T(f"fleet ui: {url}  (корінь {root}; зупинити — Ctrl+C)", f"fleet ui: {url}  (root {root}; stop with Ctrl+C)"), flush=True)
+    print(T("Не закривайте це вікно: поки воно відкрите, працює FLU fleet.",
+            "Keep this window open: FLU fleet runs while it is open."), flush=True)
     if open_browser:
         threading.Timer(0.5, webbrowser.open, (url,)).start()
     try:
@@ -393,3 +446,4 @@ def serve(root: Path, port: int = 8765, open_browser: bool = True) -> None:
         pass
     finally:
         server.server_close()
+    return 0

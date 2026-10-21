@@ -136,6 +136,8 @@ else {
   if ((Run-Native $VenvPy @('-m', 'pip', 'install', '--disable-pip-version-check', '-q', '-e', $Root)) -ne 0) {
     Fail 'pip не зміг поставити залежності. Перевірте інтернет (або проксі) і запустіть setup.cmd ще раз'
   }
+  # Позначка для fleet-ui.cmd: залежності відповідають цьому pyproject.toml, оновлювати не треба
+  Copy-Item -Force (Join-Path $Root 'pyproject.toml') (Join-Path $Root '.venv\pyproject.installed')
   if ((Run-Native (Join-Path $Root '.venv\Scripts\fleet.exe') @('check')) -ne 0) { Fail 'fleet check знайшов помилки в inventory/' }
   Ok 'fleet встановлено'
 }

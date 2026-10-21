@@ -4,6 +4,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -119,6 +120,47 @@ def test_simple_mode_errors_are_readable(simple_ui):
     assert status == 400
 
 
+def test_aws_key_copied_to_ssh_dir(tmp_path, monkeypatch):
+    from fleet.ui import install_ssh_key
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    pem = tmp_path / "Downloads" / "flu key.pem"
+    pem.parent.mkdir()
+    pem.write_bytes(b"-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----\n")
+    # «Копіювати як шлях» у Провіднику дає шлях у лапках
+    assert install_ssh_key(f'"{pem}"', "13.50.196.138") == ".ssh/flu-13.50.196.138.pem"
+    assert (tmp_path / "home" / ".ssh" / "flu-13.50.196.138.pem").read_bytes() == pem.read_bytes()
+
+    with pytest.raises(ValueError, match="не знайдено"):
+        install_ssh_key(str(tmp_path / "nope.pem"), "13.50.196.138")
+    ppk = tmp_path / "key.ppk"
+    ppk.write_text("PuTTY-User-Key-File-3: ssh-rsa\n")
+    with pytest.raises(ValueError, match="PuTTY"):
+        install_ssh_key(str(ppk), "13.50.196.138")
+    notes = tmp_path / "notes.txt"
+    notes.write_text("hello")
+    with pytest.raises(ValueError, match="не файл ключа"):
+        install_ssh_key(str(notes), "13.50.196.138")
+
+
+def test_ssh_terminal_with_aws_key(simple_ui, tmp_path, monkeypatch):
+    import fleet.ui
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    started = []
+    monkeypatch.setattr(fleet.ui.subprocess, "Popen", lambda args, **kw: started.append(args))
+    monkeypatch.setattr(fleet.ui.os, "name", "nt")
+    pem = tmp_path / "key.pem"
+    pem.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "ubuntu", "key": str(pem)})
+    assert status == 200
+    assert started[-1][-4:] == ["ssh", "-i", ".ssh/flu-13.50.196.138.pem", "ubuntu@13.50.196.138"]
+    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "root"})
+    assert status == 200 and started[-1][-2:] == ["ssh", "root@13.50.196.138"]  # без ключа — як раніше
+    status, body = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "ubuntu", "key": str(tmp_path / "x.pem")})
+    assert status == 400 and "не знайдено" in json.loads(body)["error"]
+
+
 def test_router_password_never_shown():
     from fleet.ui import mask_args
 
@@ -158,3 +200,26 @@ def test_language_follows_request(ui):
     assert "inventory is fine" in job["output"]
     status, body = call(ui, "/api/file?path=secrets/x", lang="en")
     assert status == 404 and "only files from build/" in json.loads(body)["error"]
+
+
+def test_second_launch_opens_running_ui(simple_ui, monkeypatch):
+    import fleet.ui
+
+    opened = []
+    monkeypatch.setattr(fleet.ui.webbrowser, "open", opened.append)
+    port = simple_ui.server_address[1]
+    # ярлик клацнули вдруге: друга копія не стартує, лише відкривається браузер
+    assert fleet.ui.serve(simple_ui.root, port=port) == 0
+    assert opened == [f"http://127.0.0.1:{port}/"]
+
+
+def test_port_taken_by_another_program(tmp_path, capsys):
+    import socket
+
+    from fleet.ui import serve
+
+    with socket.socket() as other:
+        other.bind(("127.0.0.1", 0))
+        other.listen()
+        assert serve(tmp_path, port=other.getsockname()[1], open_browser=False) == 2
+    assert "зайнятий іншою програмою" in capsys.readouterr().err

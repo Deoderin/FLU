@@ -117,7 +117,10 @@ const I18N = {
     s2: "Сервер: вставте команду",
     s2a: "1. Відкрийте сервер", host: "Адреса сервера", host_ph: "наприклад, 203.0.113.10", user: "Користувач",
     s2a_btn: "Відкрити термінал сервера", s2a_hint: "Відкриється чорне вікно. Якщо спитає «Are you sure you want to continue connecting» — надрукуйте yes і Enter. Потім введіть пароль сервера і Enter (символів пароля не видно — так і має бути).",
-    s2a_alt: "Або зайдіть на сервер через веб-консоль у панелі хостингу.",
+    s2a_alt: "Або зайдіть на сервер через веб-консоль у панелі хостингу (на AWS: EC2 → ваш сервер → Connect → EC2 Instance Connect).",
+    key: "Файл ключа .pem — лише для AWS", key_ph: "C:\\Users\\...\\Downloads\\ключ.pem",
+    key_hint: "Лише для серверів AWS (Amazon): там вхід не за паролем, а за файлом ключа .pem, який ви завантажили під час створення сервера. Знайдіть його в Провіднику, клацніть правою кнопкою миші → «Копіювати як шлях» і вставте сюди. Користувач на AWS — ubuntu, пароль не знадобиться. Для інших серверів залиште поле порожнім.",
+    key_fw: "На AWS відкрийте ще й порт: EC2 → ваш сервер → Security → Security group → Edit inbound rules → Add rule: Custom UDP, порт 51820 (або той, що назве сервер), джерело 0.0.0.0/0.",
     s2b: "2. Скопіюйте команду й вставте її на сервері", s2b_btn: "Скопіювати команду", copied: "Скопійовано ✓",
     s2b_hint: "У вікні сервера клацніть правою кнопкою миші — команда вставиться — і натисніть Enter. Зачекайте до хвилини.",
     s2b_both: "Команда сама розбереться: якщо WireGuard на сервері ще немає — встановить, якщо вже є — лише додасть пілота й НРК.",
@@ -155,7 +158,10 @@ const I18N = {
     s2: "Server: paste the command",
     s2a: "1. Open the server", host: "Server address", host_ph: "e.g. 203.0.113.10", user: "User",
     s2a_btn: "Open server terminal", s2a_hint: "A black window opens. If it asks \"Are you sure you want to continue connecting\", type yes and Enter. Then type the server password and Enter (the password is not shown - that is expected).",
-    s2a_alt: "Or log in to the server through the web console of your hosting panel.",
+    s2a_alt: "Or log in to the server through the web console of your hosting panel (on AWS: EC2 → your server → Connect → EC2 Instance Connect).",
+    key: ".pem key file - AWS only", key_ph: "C:\\Users\\...\\Downloads\\key.pem",
+    key_hint: "Only for AWS (Amazon) servers: they log in with the .pem key file you downloaded when creating the server, not with a password. Find it in Explorer, right-click it → \"Copy as path\" and paste it here. The AWS user is ubuntu, no password is needed. Leave the field empty for other servers.",
+    key_fw: "On AWS also open the port: EC2 → your server → Security → Security group → Edit inbound rules → Add rule: Custom UDP, port 51820 (or the one the server names), source 0.0.0.0/0.",
     s2b: "2. Copy the command and paste it on the server", s2b_btn: "Copy command", copied: "Copied ✓",
     s2b_hint: "Right-click in the server window - the command is pasted - and press Enter. Wait up to a minute.",
     s2b_both: "The command figures it out itself: if the server has no WireGuard yet, it installs it; if it has, it only adds the pilot and the UGV.",
@@ -374,8 +380,9 @@ function render() {
 
   // 2. Сервер: вставте команду
   const [lh, ih] = field("host", t("host"), { placeholder: t("host_ph"), value: store.get("fleet-server") || (st.server ? st.server.host : "") });
-  const [lu, iu] = field("user", t("user"), { value: "root" });
+  const [lu, iu] = field("user", t("user"), { value: store.get("fleet-ssh-user") || "root" });
   lu.style.flex = "0 1 140px";
+  const [lk, ik] = field("key", t("key"), { placeholder: t("key_ph"), value: store.get("fleet-ssh-key") || "" });
   const copyBtn = btn(t("s2b_btn"), async () => {
     if (!command) await prepareCommand(pilot, robot.serial);
     if (await copyText(command)) { copyBtn.textContent = t("copied"); setTimeout(() => (copyBtn.textContent = t("s2b_btn")), 2500); }
@@ -383,11 +390,17 @@ function render() {
   steps.push(card(2, stateOf(done3, done1), t("s2"),
     h("div", { class: "sub" }, h("b", {}, t("s2a")),
       h("div", { class: "row" }, lh, lu, btn(t("s2a_btn"), async () => {
-        try { store.set("fleet-server", ih.value.trim()); await api("/api/simple/ssh", { host: ih.value.trim(), user: iu.value.trim() }); message[2] = null; }
+        const host = ih.value.trim(), user = iu.value.trim(), key = ik.value.trim();
+        try {
+          store.set("fleet-server", host); store.set("fleet-ssh-user", user); store.set("fleet-ssh-key", key);
+          await api("/api/simple/ssh", { host, user, key }); message[2] = null;
+        }
         catch (e) { message[2] = [e.message, "bad"]; }
         render();
       })),
-      h("p", { class: "hint" }, t("s2a_hint")), h("p", { class: "hint" }, t("s2a_alt"))),
+      h("p", { class: "hint" }, t("s2a_hint")), h("p", { class: "hint" }, t("s2a_alt")),
+      h("div", { class: "row" }, lk),
+      h("p", { class: "hint" }, t("key_hint")), h("p", { class: "hint" }, t("key_fw"))),
     h("div", { class: "sub" }, h("b", {}, t("s2b")),
       h("div", { class: "row" }, copyBtn,
         h("button", { class: "link", onclick: async () => { showCmd = !showCmd; if (showCmd && !command) await prepareCommand(pilot, robot.serial); render(); } },

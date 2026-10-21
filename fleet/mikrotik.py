@@ -236,10 +236,23 @@ def find_bench_router(log=print, timeout: float = 3.0) -> str:
     return BENCH_HOST
 
 
+def wait_for_file(mt: MikroTik, name: str, timeout: float = 20) -> None:
+    """Файл, залитий по SFTP, з'являється в /file не одразу, а run-after-reset приймає лише файли з цього списку."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if mt.get(f'/file find name="{name}"'):
+            return
+        time.sleep(1)
+    files = mt.run("/file print terse", check=False).strip()
+    raise MikroTikError(T(f"{mt.host}: залитий файл {name} не з'явився в /file за {int(timeout)} с. Файли на роутері:\n{files}",
+                          f"{mt.host}: the uploaded file {name} did not appear in /file within {int(timeout)} s. Files on the router:\n{files}"))
+
+
 def apply_full_config(mt: MikroTik, rsc: Path) -> None:
     """Скидання роутера з нашим конфігом замість заводського. Роутер іде в перезавантаження."""
     remote = ("flash/" if mt.has_flash() else "") + "fleet-robot.rsc"
     mt.upload(rsc, remote)
+    wait_for_file(mt, remote)
     try:
         mt.run(
             f"/system reset-configuration no-defaults=yes skip-backup=yes run-after-reset={remote}",
@@ -247,6 +260,9 @@ def apply_full_config(mt: MikroTik, rsc: Path) -> None:
         )
     except (socket.timeout, paramiko.SSHException, EOFError, OSError):
         pass  # з'єднання рветься через перезавантаження — це нормально
+    except MikroTikError as exc:
+        files = mt.run("/file print terse", check=False).strip()
+        raise MikroTikError(T(f"{exc}\nФайли на роутері:\n{files}", f"{exc}\nFiles on the router:\n{files}")) from None
 
 
 def wait_for(host: str, password: str, timeout: float = 300) -> MikroTik:

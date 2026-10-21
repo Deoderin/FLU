@@ -20,4 +20,5 @@ robots:
     serial: bort-1
     platform: flu-v1
     site: main
+    slot: 1
     service_tunnel: false

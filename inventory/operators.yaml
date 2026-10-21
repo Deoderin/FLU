@@ -14,3 +14,7 @@
 #     role: operator
 #     sites: [main]
 operators:
+  - name: pilot-1
+    id: 10
+    role: dispatcher
+    sites: [main]

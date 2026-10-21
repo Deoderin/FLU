@@ -296,8 +296,7 @@ def cmd_wg_install(args) -> int:
 def cmd_ui(args) -> int:
     from .ui import serve
 
-    serve(Path(args.root).resolve() if args.root else ROOT, port=args.port, open_browser=not args.no_browser)
-    return 0
+    return serve(Path(args.root).resolve() if args.root else ROOT, port=args.port, open_browser=not args.no_browser)
 
 
 def cmd_test(args) -> int:

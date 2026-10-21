@@ -1,4 +1,4 @@
-"""Пошук роутера MikroTik (MNDP): розбір пакета й вибір адреси для прошивки."""
+"""Пошук роутера MikroTik (MNDP), вибір адреси для прошивки й заливка конфігу."""
 import struct
 
 import pytest
@@ -86,3 +86,54 @@ def test_router_without_ip_or_ambiguous(monkeypatch):
     with pytest.raises(MikroTikError, match="кілька роутерів"):
         find_bench_router(log=lambda *_: None)
     assert mikrotik.BENCH_HOST == "192.168.88.1"
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class FakeRouter:
+    """RouterOS 7: файл, залитий по SFTP, з'являється в /file не одразу."""
+    host = "192.168.88.1"
+
+    def __init__(self, appears_after):
+        self.appears_after, self.checks, self.commands = appears_after, 0, []
+
+    def has_flash(self):
+        return False
+
+    def upload(self, local, remote):
+        self.commands.append(f"upload {remote}")
+
+    def get(self, expression):
+        self.checks += 1
+        return "*1" if self.checks >= self.appears_after else ""
+
+    def run(self, command, **kwargs):
+        self.commands.append(command)
+        return " 0 name=fleet-robot.rsc type=script size=4.1KiB" if command.startswith("/file print") else ""
+
+
+def test_reset_waits_for_uploaded_file(monkeypatch):
+    monkeypatch.setattr(mikrotik, "time", Clock())
+    router = FakeRouter(appears_after=3)
+    mikrotik.apply_full_config(router, None)
+    assert router.checks == 3
+    assert router.commands == ["upload fleet-robot.rsc", "/system reset-configuration no-defaults=yes skip-backup=yes "
+                               "run-after-reset=fleet-robot.rsc"]
+
+
+def test_reset_not_started_without_file(monkeypatch):
+    monkeypatch.setattr(mikrotik, "time", Clock())
+    router = FakeRouter(appears_after=10_000)
+    with pytest.raises(MikroTikError, match="не з'явився в /file") as exc:
+        mikrotik.apply_full_config(router, None)
+    assert "type=script" in str(exc.value)  # список файлів роутера — для діагностики
+    assert not any(c.startswith("/system reset-configuration") for c in router.commands)

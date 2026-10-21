@@ -22,8 +22,8 @@ sites:
   main:
     kind: hub
     customer: FLU
-    host: 203.0.113.10              # приклад; програма замінить справжньою адресою
-    endpoint: 203.0.113.10:51820    # куди підключаються НРК і пілоти (UDP)
+    host: 13.50.196.138             # приклад; програма замінить справжньою адресою
+    endpoint: 13.50.196.138:51820   # куди підключаються НРК і пілоти (UDP)
     network:
       tunnel: 10.150.0.0/24
       operators: 10.150.1.0/24
@@ -64,3 +64,4 @@ sites:
 #   network: 10.99.0.0/16           # .0.1 — сервер, інженер з id K — .0.(1 + K), НРК — за глобальним id
 #   engineers:
 #     - {name: engineer1, id: 1}
+    server_pubkey: rXpsMwtpJjl1ZzD6oa6C91k+iqrr3JpUQZNJnd7/dU8=
