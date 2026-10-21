@@ -38,6 +38,17 @@ add bridge=br-lan interface={{ platform.ports.bench }} comment="fleet: bench"
 /interface lte set [find name="{{ platform.wan.interface }}"] apn-profiles=fleet
 {% else %}
 /ip dhcp-client add interface={{ platform.wan.interface }} disabled=no comment="fleet: wan"
+# A laptop on the same Starlink finds an assembled UGV (MNDP) and services it over ssh without a cable.
+# Only private sources behind the WAN: from the internet Starlink is unreachable (CGNAT).
+/interface list add name=fleet-wan
+/interface list member add list=fleet-wan interface={{ platform.wan.interface }}
+/interface list add name=fleet-discover
+/interface list member add list=fleet-discover interface=br-lan
+/interface list member add list=fleet-discover interface={{ platform.wan.interface }}
+/ip firewall address-list
+add list=fleet-wan-local address=10.0.0.0/8 comment="fleet: private networks behind the WAN"
+add list=fleet-wan-local address=172.16.0.0/12 comment="fleet: private networks behind the WAN"
+add list=fleet-wan-local address=192.168.0.0/16 comment="fleet: private networks behind the WAN"
 {% endif %}
 
 # --- Site tunnel: {{ site.name }} ---
@@ -57,6 +68,10 @@ add chain=input action=drop connection-state=invalid comment="fleet"
 add chain=input action=accept protocol=icmp comment="fleet"
 add chain=input action=accept in-interface-list=fleet-lan comment="fleet: bench and LAN"
 add chain=input action=accept in-interface-list=fleet-sites src-address-list=fleet-mgmt protocol=tcp dst-port=22 comment="fleet: ssh via site tunnel"
+{% if platform.wan.type != "lte" %}
+add chain=input action=accept in-interface-list=fleet-wan src-address-list=fleet-wan-local protocol=tcp dst-port=22 comment="fleet: ssh from the local Starlink network"
+add chain=input action=accept in-interface-list=fleet-wan src-address-list=fleet-wan-local protocol=udp dst-port=5678 comment="fleet: MNDP from the local Starlink network"
+{% endif %}
 {% if svc %}
 add chain=input action=accept in-interface={{ svc.iface }} protocol=tcp dst-port=22,8291 comment="fleet: service tunnel"
 {% endif %}
@@ -65,8 +80,12 @@ add chain=forward action=accept connection-state=established,related,untracked c
 add chain=forward action=drop connection-state=invalid comment="fleet"
 add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.fc }} protocol=tcp dst-port={{ mav_port }} comment="fleet: mavlink"
 add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.cam1 }}-{{ lan.cam2 }} protocol=tcp dst-port=554 comment="fleet: rtsp"
+add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.net }} protocol=icmp comment="fleet: ping devices (diagnostics)"
 add chain=forward action=accept in-interface-list=fleet-lan out-interface-list=fleet-lan comment="fleet: LAN routing (bench)"
 add chain=forward action=drop comment="fleet: drop - cameras and FC have no internet"
+
+# Devices answer the router, not the pilot: a camera or FC adapter set up without a gateway still works
+/ip firewall nat add chain=srcnat action=masquerade out-interface=br-lan src-address-list=fleet-sources comment="fleet: devices answer the router"
 
 # --- Services and hardening ---
 /ip service
@@ -81,7 +100,7 @@ set winbox disabled=no
 /ip ssh set strong-crypto=yes
 /tool mac-server set allowed-interface-list=fleet-lan
 /tool mac-server mac-winbox set allowed-interface-list=fleet-lan
-/ip neighbor discovery-settings set discover-interface-list=fleet-lan
+/ip neighbor discovery-settings set discover-interface-list={{ "fleet-lan" if platform.wan.type == "lte" else "fleet-discover" }}
 
 # WireGuard needs a sane clock after reboot
 /system ntp client set enabled=yes

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
 import sys
 from pathlib import Path
@@ -105,7 +106,7 @@ def cmd_provision(args) -> int:
 
 
 def cmd_bench_mikrotik(args) -> int:
-    from .mikrotik import BENCH_HOST, MikroTik, MikroTikError, apply_full_config, find_bench_router, save_baseline, wait_for
+    from .mikrotik import BENCH_HOST, MikroTikError, apply_full_config, find_bench_router, open_router, save_baseline, wait_for
 
     inv, store = load()
     robot = inv.robot(args.id)
@@ -113,22 +114,27 @@ def cmd_bench_mikrotik(args) -> int:
     r.render_robot(robot)
     rsc = r.robot_dir(robot) / "robot.rsc"
     _, fp = r.robot_rsc(robot, inv.site(robot.site), robot.slot)
-    host = args.host or find_bench_router()
+    host = args.host or find_bench_router(name=robot.name)  # прошитий НРК знайдеться й через Starlink
+    password = store.robot(robot.id)["mikrotik_password"]
     print(T(f"{robot.name}: заливаю {rel(rsc)} на {host} і скидаю роутер",
             f"{robot.name}: uploading {rel(rsc)} to {host} and resetting the router"))
     try:
-        mt = MikroTik(host, args.password)
+        mt = open_router(host, [args.password, password])
     except MikroTikError as exc:
         raise MikroTikError(T(
-            f"роутер не відповідає. Перевірте: кабель від ноутбука в порту 2, 3, 4 або 5; роутер увімкнено й скинуто "
-            f"до заводських; минуло 30 секунд після ввімкнення; якщо на наліпці є пароль — його введено. ({exc})",
-            f"the router does not answer. Check: the laptop cable is in port 2, 3, 4 or 5; the router is on and reset "
-            f"to factory settings; 30 seconds have passed since power-on; the label password is entered if there is one. ({exc})",
+            f"роутер не відповідає. Перевірте: кабель від ноутбука в порту 5 (або ноутбук у Wi-Fi того самого Starlink, "
+            f"якщо НРК уже прошито); роутер увімкнено; минуло 30 секунд після ввімкнення; для нового роутера — "
+            f"його скинуто до заводських і введено пароль з наліпки, якщо він там є. ({exc})",
+            f"the router does not answer. Check: the laptop cable is in port 5 (or the laptop is on the Wi-Fi of the same "
+            f"Starlink if the UGV is already flashed); the router is on; 30 seconds have passed since power-on; for a new "
+            f"router - it is reset to factory settings and the label password is entered if there is one. ({exc})",
         )) from None
     with mt:
         apply_full_config(mt, rsc)
     print(T("роутер перезавантажується, чекаю...", "the router is rebooting, waiting..."))
-    with wait_for(BENCH_HOST, store.robot(robot.id)["mikrotik_password"]) as mt:
+    # На стенді після скидання роутер на 192.168.88.1; через Starlink — на тій самій адресі (DHCP Starlink за MAC)
+    back = BENCH_HOST if ipaddress.ip_address(host) in A.LAN else host
+    with wait_for(back, password) as mt:
         got = mt.fingerprint()
         if got != fp:
             print(T(f"конфіг застосувався не повністю: відбиток {got}, очікувався {fp}. Дивіться /log print на роутері",
@@ -273,6 +279,23 @@ def cmd_hub_command(args) -> int:
     return 0
 
 
+def cmd_hub_admin(args) -> int:
+    from .hub import HubError, admin_command
+
+    if args.give and not args.to:
+        raise HubError(T("кому передати НРК: додайте --to <ім'я пілота>", "who gets the UGV: add --to <pilot name>"))
+    if args.give:
+        cmd = admin_command(ROOT, "give", serial=args.give, pilot=args.to)
+    elif args.remove_pilot:
+        cmd = admin_command(ROOT, "remove-pilot", pilot=args.remove_pilot)
+    else:
+        cmd = admin_command(ROOT, "remove-robot", serial=args.remove_robot)
+    print(T("Вставте цю команду на сервері (під root або користувачем із sudo):",
+            "Paste this command on the server (as root or a user with sudo):"), file=sys.stderr)
+    print(cmd)
+    return 0
+
+
 def cmd_hub_apply(args) -> int:
     from .hub import apply_response
 
@@ -319,8 +342,8 @@ def cmd_test(args) -> int:
 # --- розбір аргументів ---------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="fleet", description=T("Конвеєр прошивки та обслуговування НРК FLU",
-                                                             "FLU UGV provisioning and maintenance pipeline"))
+    p = argparse.ArgumentParser(prog="fleet", description=T("UGV Quick Setup: прошивка та обслуговування НРК",
+                                                             "UGV Quick Setup: UGV provisioning and maintenance"))
     p.add_argument("--lang", choices=LANGS, help=T("мова виводу (типово uk або FLEET_LANG)", "output language (default uk or FLEET_LANG)"))
     sub = p.add_subparsers(dest="command", required=True)
     via_choices = ["auto", "svc", "tunnel", "site", "bench"]
@@ -403,6 +426,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--pilot", required=True, help=T("ім'я пілота цього ноутбука (a-z, 0-9, -)", "pilot name of this laptop (a-z, 0-9, -)"))
     s.add_argument("--serial", help=T("заводський номер НРК", "UGV serial number"))
     s.set_defaults(fn=cmd_hub_command)
+
+    s = sub.add_parser("hub-admin", help=T("команда для сервера: передати НРК пілоту, видалити пілота або НРК",
+                                           "command for the server: give a UGV to a pilot, remove a pilot or a UGV"))
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--give", metavar="SERIAL", help=T("заводський номер НРК, який передати (разом з --to)",
+                                                      "serial of the UGV to give (with --to)"))
+    g.add_argument("--remove-pilot", metavar="NAME", help=T("видалити пілота із сервера", "remove the pilot from the server"))
+    g.add_argument("--remove-robot", metavar="SERIAL", help=T("видалити НРК із сервера й звільнити слот",
+                                                              "remove the UGV from the server and free its slot"))
+    s.add_argument("--to", metavar="PILOT", help=T("ім'я пілота, якому передати НРК", "the pilot to give the UGV to"))
+    s.set_defaults(fn=cmd_hub_admin)
 
     s = sub.add_parser("hub-apply", help=T("застосувати відповідь сервера (рядок FLU1:...:END)",
                                            "apply the server response (the FLU1:...:END line)"))

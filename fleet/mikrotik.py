@@ -1,6 +1,7 @@
 """MikroTik по SSH: застосування конфігу на стенді, віддалений доступ, відбиток і дрейф."""
 from __future__ import annotations
 
+import logging
 import re
 import socket
 import time
@@ -22,6 +23,10 @@ ERROR_RE = re.compile(
 VOLATILE_RE = re.compile(r"^# (?:\S+ \S+ by RouterOS|software id|model|serial number)")
 # Налаштування, які RouterOS міняє сам: часовий пояс визначається, щойно з'являється інтернет
 SELF_SET_RE = re.compile(r"^/system clock set time-zone-name=\S+$")
+
+
+# Поки роутер перезавантажується, paramiko друкує трасування обірваних з'єднань. Помилки ми обробляємо самі
+logging.getLogger("paramiko").addHandler(logging.NullHandler())
 
 
 class MikroTikError(Exception):
@@ -196,22 +201,29 @@ def connect_robot(inv: Inventory, store: SecretStore, robot: Robot, via: str = "
     raise MikroTikError(T(f"невідомий спосіб підключення: {via}", f"unknown connection method: {via}"))
 
 
-def find_bench_router(log=print, timeout: float = 3.0) -> str:
+def find_bench_router(log=print, timeout: float = 3.0, name: str | None = None) -> str:
     """Адреса роутера на стенді: шукаємо його самі (MNDP), інакше — заводська 192.168.88.1.
 
     Спершу перевіряємо кабель: без адреси 192.168.88.x на Ethernet до скинутого роутера
     не дістатися, і краще одразу сказати чому, ніж чекати тайм-ауту SSH.
+    name — ім'я НРК: уже прошитий роутер видно й без кабелю, якщо ноутбук у тому самому Starlink.
     """
     from . import netcheck
     from .mndp import describe, discover
 
-    link = netcheck.check_router_link()
-    log(T(f"  кабель: {link['message']}", f"  cable: {link['message']}"))
-    link_ok = link["status"] in ("ok", "unknown")
-
     routers = discover(timeout)
     for r in routers:
         log(T(f"  знайдено роутер: {describe(r)}", f"  found router: {describe(r)}"))
+    ours = [r for r in routers if name and r.get("identity") == name and r["ipv4"]]
+    if ours:
+        if not ours[0]["ipv4"].startswith("192.168.88."):
+            log(T(f"  {name} знайдено через спільну мережу ({ours[0]['ipv4']}): кабель не потрібен",
+                  f"  {name} found over the shared network ({ours[0]['ipv4']}): no cable needed"))
+        return ours[0]["ipv4"]
+    # Про кабель кажемо, лише коли без нього не обійтися: через спільну мережу НРК не знайшовся
+    link = netcheck.check_router_link()
+    log(T(f"  кабель: {link['message']}", f"  cable: {link['message']}"))
+    link_ok = link["status"] in ("ok", "unknown")
     factory = [r for r in routers if r["ipv4"] == BENCH_HOST]
     if len(factory) == 1:
         if not link_ok:
@@ -248,6 +260,17 @@ def wait_for_file(mt: MikroTik, name: str, timeout: float = 20) -> None:
     files = mt.run("/file print terse", check=False).strip()
     raise MikroTikError(T(f"{mt.host}: залитий файл {name} не з'явився в /file за {int(timeout)} с. Файли на роутері:\n{files}",
                           f"{mt.host}: the uploaded file {name} did not appear in /file within {int(timeout)} s. Files on the router:\n{files}"))
+
+
+def open_router(host: str, passwords: list[str]) -> MikroTik:
+    """Вхід першим паролем, що підійде: заводським з наліпки або нашим, якщо роутер уже прошито."""
+    last: MikroTikError | None = None
+    for password in dict.fromkeys(passwords):
+        try:
+            return MikroTik(host, password)
+        except MikroTikError as exc:
+            last = exc
+    raise last or MikroTikError(T("немає пароля для входу", "no password to log in with"))
 
 
 def apply_full_config(mt: MikroTik, rsc: Path) -> None:

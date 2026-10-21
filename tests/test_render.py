@@ -228,3 +228,26 @@ def test_cameras_move_from_old_addresses(provisioned, store, monkeypatch):
     C.setup_cameras(provisioned, store, provisioned.robot(1), FakeRouter(), log=lambda *_: None)
     assert at == {"cam1": "192.168.88.108", "cam2": "192.168.88.109"}
     assert not disabled  # усі порти знову ввімкнено
+
+
+def test_starlink_side_only_ssh_and_discovery(provisioned, store):
+    """З боку Starlink роутер видно (MNDP) і доступний лише ssh, лише з приватних адрес; для LTE — нічого."""
+    robot = provisioned.robot(1)
+    rsc, _ = Renderer(provisioned, store).robot_rsc(robot, provisioned.site(robot.site), robot.slot)
+    wan = [line for line in rsc.splitlines() if "in-interface-list=fleet-wan" in line]
+    assert [re.search(r"protocol=(\w+) dst-port=(\d+)", line).groups() for line in wan] == [("tcp", "22"), ("udp", "5678")]
+    assert all("src-address-list=fleet-wan-local" in line for line in wan)
+    assert "discover-interface-list=fleet-discover" in rsc and "8291" not in "".join(wan)
+
+    provisioned.platforms["flu-v1"]["wan"] = {"type": "lte", "interface": "lte1", "apn": "internet"}
+    rsc, _ = Renderer(provisioned, store).robot_rsc(robot, provisioned.site(robot.site), robot.slot)
+    assert "fleet-wan" not in rsc and "discover-interface-list=fleet-lan" in rsc
+
+
+def test_devices_answer_through_router(provisioned, store):
+    """Камера чи адаптер ФК без шлюзу 192.168.88.1 однаково відповідають: роутер підставляє себе відправником."""
+    robot = provisioned.robot(1)
+    rsc, _ = Renderer(provisioned, store).robot_rsc(robot, provisioned.site(robot.site), robot.slot)
+    assert ("/ip firewall nat add chain=srcnat action=masquerade out-interface=br-lan "
+            "src-address-list=fleet-sources") in rsc
+    assert "dst-address=192.168.88.0/24 protocol=icmp" in rsc  # ping пристроїв через тунель

@@ -52,9 +52,9 @@ def test_state(provisioned, root):
 
 def test_page_and_files(ui):
     status, body = call(ui, "/")
-    assert status == 200 and "налаштування НРК".encode() in body  # простий режим
+    assert status == 200 and b"UGV Quick Setup" in body and "Пілот і НРК".encode() in body  # простий режим
     status, body = call(ui, "/advanced")
-    assert status == 200 and b"FLU fleet" in body
+    assert status == 200 and b"UGV Quick Setup" in body and b"advanced" in body
     status, body = call(ui, "/api/file?path=build/robots/nrk-001/robot.rsc")
     assert status == 200 and b"fleet: nrk-001" in body
     assert call(ui, "/api/file?path=secrets/robots/1.json")[0] == 404  # секрети не віддаємо
@@ -128,8 +128,8 @@ def test_aws_key_copied_to_ssh_dir(tmp_path, monkeypatch):
     pem.parent.mkdir()
     pem.write_bytes(b"-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----\n")
     # «Копіювати як шлях» у Провіднику дає шлях у лапках
-    assert install_ssh_key(f'"{pem}"', "13.50.196.138") == ".ssh/flu-13.50.196.138.pem"
-    assert (tmp_path / "home" / ".ssh" / "flu-13.50.196.138.pem").read_bytes() == pem.read_bytes()
+    assert install_ssh_key(f'"{pem}"', "13.50.196.138") == ".ssh/aws-13.50.196.138.pem"
+    assert (tmp_path / "home" / ".ssh" / "aws-13.50.196.138.pem").read_bytes() == pem.read_bytes()
 
     with pytest.raises(ValueError, match="не знайдено"):
         install_ssh_key(str(tmp_path / "nope.pem"), "13.50.196.138")
@@ -154,7 +154,7 @@ def test_ssh_terminal_with_aws_key(simple_ui, tmp_path, monkeypatch):
     pem.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
     status, _ = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "ubuntu", "key": str(pem)})
     assert status == 200
-    assert started[-1][-4:] == ["ssh", "-i", ".ssh/flu-13.50.196.138.pem", "ubuntu@13.50.196.138"]
+    assert started[-1][-4:] == ["ssh", "-i", ".ssh/aws-13.50.196.138.pem", "ubuntu@13.50.196.138"]
     status, _ = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "root"})
     assert status == 200 and started[-1][-2:] == ["ssh", "root@13.50.196.138"]  # без ключа — як раніше
     status, body = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "ubuntu", "key": str(tmp_path / "x.pem")})
@@ -229,13 +229,13 @@ def test_each_local_pilot_has_own_tunnel(simple_ui, monkeypatch):
     import fleet.pilot
     import fleet.ui
 
-    assert fleet.pilot.tunnel_name("main", "pilot-2") == "flu-main-pilot-2"
-    monkeypatch.setattr(fleet.pilot, "tunnel_status", lambda name: "running" if name == "flu-main-ivan" else "missing")
+    assert fleet.pilot.tunnel_name("main", "pilot-2") == "main-pilot-2"
+    monkeypatch.setattr(fleet.pilot, "tunnel_status", lambda name: "running" if name == "main-ivan" else "missing")
     call(simple_ui, "/api/simple/prepare", {"pilot": "ivan", "serial": "FLU-2026-0001"})
     call(simple_ui, "/api/simple/prepare", {"pilot": "petro", "serial": "FLU-2026-0002"})
     state = json.loads(call(simple_ui, "/api/simple")[1])
-    assert state["tunnels"] == {"ivan": {"name": "flu-main-ivan", "status": "running"},
-                                "petro": {"name": "flu-main-petro", "status": "missing"}}
+    assert state["tunnels"] == {"ivan": {"name": "main-ivan", "status": "running"},
+                                "petro": {"name": "main-petro", "status": "missing"}}
 
     # файл тунелю для ноутбука пілота: лише після відповіді сервера і лише для правильного імені
     opened = []
@@ -248,3 +248,11 @@ def test_each_local_pilot_has_own_tunnel(simple_ui, monkeypatch):
     conf.write_text("[Interface]\n")
     status, body = call(simple_ui, "/api/simple/open-pilot-conf", {"pilot": "ivan"})
     assert status == 200 and json.loads(body)["path"] == str(Path("build/sites/main/operators/ivan.conf"))
+
+
+def test_admin_command_from_wizard(simple_ui):
+    status, body = call(simple_ui, "/api/simple/admin-command", {"action": "give", "serial": "PF-01", "pilot": "petro"})
+    assert status == 200 and "bash /tmp/flu-hub.sh '--give' 'PF-01' 'petro'" in json.loads(body)["command"]
+    status, body = call(simple_ui, "/api/simple/admin-command", {"action": "give", "serial": "ПФ-01", "pilot": "petro"})
+    assert status == 400 and "кирилиця (ПФ)" in json.loads(body)["error"]
+    assert call(simple_ui, "/api/simple/admin-command", {"action": "rm -rf", "serial": "PF-01"})[0] == 400

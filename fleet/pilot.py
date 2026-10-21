@@ -4,9 +4,10 @@
 його в .conf.dpapi, і тунель видно в застосунку. Потім тунель вмикається як служба
 командою /installtunnelservice. Для цього потрібен дозвіл адміністратора (UAC).
 
-У кожного пілота свій тунель (flu-<майданчик>-<пілот>): на одному ноутбуці технік може
-налаштувати кількох пілотів. Тунелі ведуть у ті самі мережі НРК, тож працює лише один:
-вмикаючи тунель пілота, вимикаємо тунелі інших (служба знімається, конфіг лишається в застосунку).
+У кожного пілота свій тунель (<майданчик>-<пілот>, наприклад main-pilot-2): на одному ноутбуці
+технік може налаштувати кількох пілотів. Тунелі ведуть у ті самі мережі НРК, тож працює лише один:
+вмикаючи тунель пілота, вимикаємо тунелі інших пілотів цього ноутбука (служба знімається,
+конфіг лишається в застосунку). Старі тунелі з тестовою назвою flu-<майданчик>* прибираються зовсім.
 """
 from __future__ import annotations
 
@@ -32,12 +33,12 @@ def ps_quote(value) -> str:
 
 
 def tunnel_name(site: str, pilot: str) -> str:
-    return f"flu-{site}-{pilot}"[:32]  # ім'я пілота — до 20 символів, тож обрізати не доводиться
+    return f"{site}-{pilot}"[:32]  # ім'я пілота — до 20 символів, тож обрізати не доводиться
 
 
-def legacy_tunnel_name(site: str) -> str:
-    """Один тунель на майданчик, як було раніше: при встановленні тунелю пілота його прибираємо."""
-    return f"flu-{site}"[:32]
+def legacy_tunnel_prefix(site: str) -> str:
+    """Старі тунелі: flu-<майданчик> (один на ноутбук) і flu-<майданчик>-<пілот>. Їх прибираємо зовсім."""
+    return f"flu-{site}"
 
 
 def wireguard_installed() -> bool | None:
@@ -58,7 +59,8 @@ ELEVATED_PS1 = r"""$ErrorActionPreference = 'Stop'
 $log = '{result}'
 function Say($m) {{ Add-Content -LiteralPath $log -Value $m -Encoding UTF8 }}
 try {{
-  $wg = '{wg}'; $dir = '{configs}'; $name = '{name}'; $local = '{local}'; $legacy = '{legacy}'; $prefix = '{prefix}'
+  $wg = '{wg}'; $dir = '{configs}'; $name = '{name}'; $local = '{local}'; $legacy = '{legacy}'
+  $others = @({others})
   # Знімаємо службу тунелю, лише якщо вона є: інакше wireguard.exe показує вікно з помилкою
   function Stop-Tunnel($n) {{
     if (Get-Service -Name ('WireGuardTunnel$' + $n) -ErrorAction SilentlyContinue) {{
@@ -66,12 +68,14 @@ try {{
       Say "stopped: $n"
     }}
   }}
-  # Тунелі інших пілотів ведуть у ті самі мережі НРК: вимикаємо, їхні конфіги лишаються в застосунку
-  Get-Service -Name ('WireGuardTunnel$' + $prefix + '*') -ErrorAction SilentlyContinue |
-    ForEach-Object {{ $_.Name.Substring('WireGuardTunnel$'.Length) }} | Where-Object {{ $_ -ne $name }} |
-    ForEach-Object {{ Stop-Tunnel $_ }}
-  # Старий спільний тунель майданчика і попередній конфіг цього пілота прибираємо зовсім
-  foreach ($n in @($legacy, $name)) {{
+  # Тунелі інших пілотів цього ноутбука ведуть у ті самі мережі НРК: вимикаємо, їхні конфіги лишаються в застосунку
+  foreach ($n in $others) {{ Stop-Tunnel $n }}
+  # Старі тунелі з тестовою назвою (flu-<майданчик>*) і попередній конфіг цього пілота прибираємо зовсім
+  $old = @(Get-Service -Name ('WireGuardTunnel$' + $legacy + '*') -ErrorAction SilentlyContinue |
+    ForEach-Object {{ $_.Name.Substring('WireGuardTunnel$'.Length) }})
+  $old += @(Get-ChildItem -Path $dir -Filter ($legacy + '*.conf*') -ErrorAction SilentlyContinue |
+    ForEach-Object {{ $_.Name -replace '\.conf(\.dpapi)?$', '' }})
+  foreach ($n in (@($old) + $name | Select-Object -Unique)) {{
     Stop-Tunnel $n
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $dir "$n.conf.dpapi"), (Join-Path $dir "$n.conf")
   }}
@@ -95,6 +99,7 @@ def install_pilot_tunnel(root: Path, site: str, pilot: str, dry_run: bool = Fals
         raise TunnelError(T(f"конфігу пілота {pilot} ще немає: спочатку вставте відповідь сервера",
                             f"there is no config for pilot {pilot} yet: paste the server response first"))
     name = tunnel_name(site, pilot)
+    others = [tunnel_name(site, p.stem) for p in sorted((root / "secrets" / "operators").glob("*.json")) if p.stem != pilot]
     store = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "FLU" / "wireguard"
     store.mkdir(parents=True, exist_ok=True)
     local = store / f"{name}.conf"
@@ -111,7 +116,7 @@ def install_pilot_tunnel(root: Path, site: str, pilot: str, dry_run: bool = Fals
     result = Path(tempfile.gettempdir()) / f"fleet-wg-{name}.log"
     script = ELEVATED_PS1.format(**{k: ps_quote(v) for k, v in {
         "result": result, "wg": WG_EXE, "configs": WG_CONFIGS, "name": name, "local": local,
-        "legacy": legacy_tunnel_name(site), "prefix": f"flu-{site}-"}.items()})
+        "legacy": legacy_tunnel_prefix(site)}.items()}, others=", ".join(f"'{ps_quote(n)}'" for n in others))
     ps1 = Path(tempfile.gettempdir()) / f"fleet-wg-{name}.ps1"
     ps1.write_text(script, encoding="utf-8-sig")  # BOM: Windows PowerShell 5.1 інакше читає файл як ANSI
     if dry_run:

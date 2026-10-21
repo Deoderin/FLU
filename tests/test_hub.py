@@ -9,17 +9,28 @@ import pytest
 from fleet import hub
 from fleet.hub import HubError, apply_response, parse_response, prepare
 from fleet.inventory import Inventory
-from fleet.keystore import wg_genkey, wg_pubkey
+from fleet.keystore import SecretStore, wg_genkey, wg_pubkey
+from fleet.render import Renderer
 
 from .conftest import REPO
 
 
-@pytest.fixture
-def fresh(tmp_path):
+def laptop(path: Path) -> Path:
     """Копія репозиторію з його справжнім (порожнім) інвентарем — як на новому ноутбуці."""
     for name in ("inventory", "base", "templates", "server"):
-        shutil.copytree(REPO / name, tmp_path / "repo" / name)
-    return tmp_path / "repo"
+        shutil.copytree(REPO / name, path / name)
+    return path
+
+
+@pytest.fixture
+def fresh(tmp_path):
+    return laptop(tmp_path / "repo")
+
+
+@pytest.fixture
+def other(tmp_path):
+    """Другий ноутбук зі своїми ключами, той самий сервер."""
+    return laptop(tmp_path / "other")
 
 
 def find_bash() -> str | None:
@@ -50,11 +61,11 @@ class FakeServer:
             f"case \"$1\" in\n  genkey) echo '{key}' ;;\n  pubkey) cat >/dev/null; echo '{self.pubkey}' ;;\n"
             f"  show) printf '{used_ports}' ;;\nesac\n").encode())
 
-    def run(self, command: str) -> str:
+    def run(self, command: str, ok: bool = True) -> str:
         env = {**os.environ, "PATH": str(self.stub) + os.pathsep + os.environ["PATH"], "FLU_TEST": "1",
                "FLU_WG_DIR": self.dir.as_posix(), "FLU_ENDPOINT_HOST": "198.51.100.20"}
         r = subprocess.run([BASH, "-c", command], env=env, capture_output=True, text=True, encoding="utf-8")
-        assert r.returncode == 0, r.stderr
+        assert (r.returncode == 0) == ok, r.stderr
         return r.stdout + r.stderr
 
     def peers(self) -> list[list[str]]:
@@ -76,6 +87,8 @@ def test_bad_input_rejected(fresh):
         prepare(fresh, "Іван", "FLU-1")
     with pytest.raises(HubError, match="номер НРК"):
         prepare(fresh, "ivan", "FLU 1; rm -rf /")
+    with pytest.raises(HubError, match=r"кирилиця \(ПФ\)"):
+        prepare(fresh, "ivan", "ПФ-01")
 
 
 @needs_bash
@@ -103,6 +116,9 @@ def test_round_trip(fresh, tmp_path):
     assert '/ip route add dst-address=10.150.1.0/24 gateway=wg-main' in rsc
     assert "dst-address=192.168.88.108-192.168.88.109" in rsc  # передня і задня камери
     assert "mtu=1280" in rsc and "MTU = 1280" in pilot_conf
+    streams = Renderer(inv, SecretStore(fresh)).camera_streams(inv.robot(1))
+    assert [(c["cam"], c["ip"]) for c in streams] == [("cam1", "10.150.16.8"), ("cam2", "10.150.16.9")]
+    assert streams[0]["rtsp"] == "rtsp://10.150.16.8:554/Streaming/Channels/102"
 
     conf = (server.dir / "flu.conf").read_text()
     assert "AllowedIPs = 10.150.1.10/32" in conf and "AllowedIPs = 10.150.0.2/32, 10.150.16.0/28" in conf
@@ -183,18 +199,43 @@ def test_ugv_without_owner_is_hidden(fresh, tmp_path):
     assert acl_rules(server) == ["iptables -A flu-acl -s 10.150.1.10/32 -d 10.150.16.16/28 -j ACCEPT  # ivan -> UGV FLU-2026-0001"]
 
 
-def test_pilot_or_ugv_from_another_laptop_rejected(fresh):
-    """Ключ пілота чи НРК на іншому ноутбуці: новий ключ тут від'єднав би їх, тож команду не даємо."""
-    prepare(fresh, "ivan", "FLU-2026-0001")
-    hub._set_pilot(fresh, "main", "ivan", 10)  # пілот уже на сервері (відповідь вставлено на тому ноутбуці)
-    (fresh / "secrets" / "operators" / "ivan.json").unlink()
-    with pytest.raises(HubError, match="ключ на іншому ноутбуці"):
-        prepare(fresh, "ivan", "FLU-2026-0002")
+@needs_bash
+def test_same_name_from_another_laptop_refused(fresh, other, tmp_path):
+    """Спільний сервер: інший ноутбук з тим самим ім'ям пілота чи номером НРК не витісняє першого."""
+    server = FakeServer(tmp_path)
+    server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    db = (server.dir / "flu-peers.tsv").read_text()
+    out = server.run(prepare(other, "ivan", "FLU-2026-0009")["command"], ok=False)
+    assert "ім'я пілота ivan на цьому сервері вже зайняте іншим ноутбуком" in out
+    out = server.run(prepare(other, "petro", "FLU-2026-0001")["command"], ok=False)
+    assert "НРК з номером FLU-2026-0001 уже зареєстровано" in out
+    assert (server.dir / "flu-peers.tsv").read_text() == db  # відмова нічого не змінила
+    server.run(prepare(fresh, "ivan", "FLU-2026-0002")["command"])  # свій ноутбук — як і раніше
 
-    inv = Inventory.load(fresh)
-    inv.assign(1, "main", 1)  # НРК прошито на тому ноутбуці
-    inv.save_robots()
-    (fresh / "secrets" / "robots" / "1.json").unlink()
-    with pytest.raises(HubError, match="на іншому ноутбуці"):
-        prepare(fresh, "petro", "FLU-2026-0001")
-    assert prepare(fresh, "petro", "FLU-2026-0003")["robot_id"] == 2  # новий НРК новому пілоту — можна
+
+@needs_bash
+def test_give_and_remove_by_name(fresh, other, tmp_path):
+    """Передача НРК і службові команди: лише імена, тож працюють з будь-якого ноутбука."""
+    server = FakeServer(tmp_path)
+    server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    server.run(prepare(other, "petro", None)["command"])
+    out = server.run(hub.admin_command(other, "give", serial="FLU-2026-0001", pilot="petro"))
+    assert "НРК FLU-2026-0001 передано від пілота ivan пілоту petro" in out
+    assert "MAVLink 10.150.16.2:5760, передня камера 10.150.16.8, задня камера 10.150.16.9" in out
+    assert acl_rules(server) == ["iptables -A flu-acl -s 10.150.1.11/32 -d 10.150.16.0/28 -j ACCEPT  # petro -> UGV FLU-2026-0001"]
+    assert "пілота nobody на цьому сервері немає" in server.run(
+        hub.admin_command(fresh, "give", serial="FLU-2026-0001", pilot="nobody"), ok=False)
+
+    out = server.run(hub.admin_command(fresh, "remove-pilot", pilot="petro"))
+    assert "не бачить ніхто: FLU-2026-0001" in out and acl_rules(server) == []
+    server.run(prepare(fresh, "petro", None)["command"])  # ім'я звільнилось — його може взяти інший ноутбук
+    assert "слот 1 вільний" in server.run(hub.admin_command(fresh, "remove-robot", serial="FLU-2026-0001"))
+    assert [p[:3] for p in server.peers()] == [["pilot", "10", "ivan"], ["pilot", "11", "petro"]]
+    with pytest.raises(HubError, match="кирилиця"):
+        hub.admin_command(fresh, "remove-robot", serial="ПФ-01")
+
+
+def test_server_command_fits_console(fresh):
+    """Без коментарів скрипт стискається в команду, яку приймає будь-яка консоль (до ~8 тис. символів)."""
+    cmd = prepare(fresh, "pilot-with-long-name", "SERIAL-WITH-A-LONG-NAME-0001")["command"]
+    assert len(cmd) < 7500

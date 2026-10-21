@@ -1,10 +1,10 @@
 ﻿<#
-  Установник FLU fleet для ноутбука (Windows 10/11).
+  Установник UGV Quick Setup для ноутбука (Windows 10/11).
 
   1. Python 3.14 (або вже встановлений 3.11-3.14)
   2. WireGuard
   3. Оточення .venv і сам fleet
-  4. Ярлик «FLU fleet» на робочому столі
+  4. Ярлик «UGV Quick Setup» на робочому столі
   5. Відкриває майстер першого налаштування в браузері
 
   Ставить через winget, а якщо його немає — завантажує інсталятори з python.org
@@ -96,7 +96,7 @@ function Install-WireGuard {
   Start-Process -FilePath $tmp -Wait  # сам попросить дозвіл адміністратора
 }
 
-Write-Host 'FLU fleet: установка на ноутбук' -ForegroundColor White
+Write-Host 'UGV Quick Setup: установка на ноутбук' -ForegroundColor White
 if ($DryRun) { Write-Host '(dry-run: нічого не змінюю, лише показую план)' -ForegroundColor Yellow }
 
 # 1. Python ---------------------------------------------------------------------
@@ -144,7 +144,9 @@ else {
 
 # 4. Ярлик ----------------------------------------------------------------------
 Step 4 'Ярлик на робочому столі'
-$Lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'FLU fleet.lnk'
+$Lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'UGV Quick Setup.lnk'
+# Ярлик зі старою тестовою назвою прибираємо, щоб на столі не було двох
+$OldLnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'FLU fleet.lnk'
 if ($NoShortcut) { Info 'пропущено (-NoShortcut)' }
 elseif ($DryRun) { Info "створив би $Lnk" }
 else {
@@ -153,12 +155,13 @@ else {
   $shortcut.WorkingDirectory = $Root
   $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,13"
   $shortcut.Save()
+  Remove-Item -Force -ErrorAction SilentlyContinue $OldLnk
   Ok $Lnk
 }
 
 # 5. Майстер --------------------------------------------------------------------
 Step 5 'Майстер першого налаштування'
-if ($NoLaunch -or $DryRun) { Info 'відкрийте ярлик «FLU fleet» або fleet-ui.cmd' }
+if ($NoLaunch -or $DryRun) { Info 'відкрийте ярлик «UGV Quick Setup» або fleet-ui.cmd' }
 else {
   Start-Process -FilePath (Join-Path $Root 'fleet-ui.cmd') -WorkingDirectory $Root
   Ok 'відкриваю http://127.0.0.1:8765 — далі: адреса сервера, ім''я пілота, номер НРК'

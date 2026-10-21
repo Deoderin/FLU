@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__
+from . import APP_NAME, __version__
 from . import addressing as A
 from .i18n import LANGS, T, get_lang, set_lang
 from .inventory import Inventory, InventoryError
@@ -137,7 +137,8 @@ def robot_row(root: Path, inv: Inventory, r) -> dict:
 
     rdir = root / "build" / "robots" / r.name
     site = inv.sites.get(r.site) if r.site else None
-    qgc = Renderer(inv, SecretStore(root)).qgc_address(r) if site else None
+    renderer = Renderer(inv, SecretStore(root))
+    qgc = renderer.qgc_address(r) if site else None
     return {
         "id": r.id,
         "name": r.name,
@@ -152,6 +153,7 @@ def robot_row(root: Path, inv: Inventory, r) -> dict:
         "files": sorted(p.relative_to(root).as_posix() for p in rdir.glob("*") if p.is_file()),
         "mavlink": f"tcp:{qgc}" if qgc else None,
         "qgc": qgc,
+        "cameras": renderer.camera_streams(r) if site else [],
         "report": latest_report(root, r.name),
     }
 
@@ -234,7 +236,7 @@ def pilot_conf(root: Path, pilot: str) -> Path:
 
 
 def install_ssh_key(src: str, host: str) -> str:
-    """AWS: ключ .pem сервера -> ~/.ssh/flu-<host>.pem; повертає шлях відносно домашньої теки.
+    """AWS: ключ .pem сервера -> ~/.ssh/aws-<host>.pem; повертає шлях відносно домашньої теки.
 
     ssh у Windows відкидає ключ, до якого мають доступ інші користувачі (UNPROTECTED PRIVATE KEY FILE),
     а файл, скопійований у ~/.ssh, успадковує права лише власника. Відносний шлях з перевіреним host
@@ -249,7 +251,7 @@ def install_ssh_key(src: str, host: str) -> str:
                            "this is a PuTTY key (.ppk), a .pem is needed: in PuTTYgen - Conversions -> Export OpenSSH key"))
     if b"PRIVATE KEY" not in data:
         raise ValueError(T(f"{path.name} — не файл ключа .pem", f"{path.name} is not a .pem key file"))
-    rel = f".ssh/flu-{host}.pem"
+    rel = f".ssh/aws-{host}.pem"
     dst = Path.home() / rel
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(data)
@@ -386,7 +388,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         # Простий режим: швидкі дії виконуються тут же, без окремого процесу; усе пишеться в ui.log
-        from .hub import HubError, apply_response, prepare
+        from .hub import HubError, admin_command, apply_response, prepare
         action = url.path.rsplit("/", 1)[-1]
         try:
             if url.path == "/api/simple/prepare":
@@ -411,6 +413,11 @@ class Handler(BaseHTTPRequestHandler):
                 open_ssh_terminal(host, user, key)
                 ui_log(root, f"ssh: opened terminal {user}@{host}" + (" with .pem key (AWS)" if key else ""))
                 return self._json({"ok": True})
+            if url.path == "/api/simple/admin-command":
+                act, serial, pilot = (str(body.get(k) or "").strip() for k in ("action", "serial", "pilot"))
+                cmd = admin_command(root, act, serial=serial or None, pilot=pilot or None)
+                ui_log(root, f"admin-command: {act} serial={serial} pilot={pilot}")
+                return self._json({"command": cmd})
             if url.path == "/api/simple/open-pilot-conf":
                 path = pilot_conf(root, str(body.get("pilot", "")))
                 if os.name == "nt":
@@ -437,7 +444,7 @@ def ui_running(url: str) -> bool:
     """На цьому порту вже відповідає fleet ui (наприклад, ярлик клацнули вдруге)."""
     try:
         with urllib.request.urlopen(url, timeout=2) as r:
-            return b"FLU" in r.read()
+            return APP_NAME.encode() in r.read()
     except (OSError, ValueError):
         return False
 
@@ -456,8 +463,8 @@ def serve(root: Path, port: int = 8765, open_browser: bool = True) -> int:
             webbrowser.open(url)
         return 0
     print(T(f"fleet ui: {url}  (корінь {root}; зупинити — Ctrl+C)", f"fleet ui: {url}  (root {root}; stop with Ctrl+C)"), flush=True)
-    print(T("Не закривайте це вікно: поки воно відкрите, працює FLU fleet.",
-            "Keep this window open: FLU fleet runs while it is open."), flush=True)
+    print(T(f"Не закривайте це вікно: поки воно відкрите, працює {APP_NAME}.",
+            f"Keep this window open: {APP_NAME} runs while it is open."), flush=True)
     if open_browser:
         threading.Timer(0.5, webbrowser.open, (url,)).start()
     try:

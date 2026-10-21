@@ -400,6 +400,22 @@ class Renderer:
             return f"{A.server_ip(site)}:{A.arbiter_port(robot.slot)}"
         return None
 
+    def camera_streams(self, robot: Robot) -> list[dict]:
+        """Відео для QGroundControl: hub — напряму з камер через тунель, managed — через MediaMTX сервера."""
+        if not robot.provisioned:
+            return []
+        site = self.inv.site(robot.site)
+        path = self.inv.platform(robot)["cameras"]["rtsp_path"]
+        streams = []
+        for cam in A.CAMERAS:
+            if site.hub:
+                ip = str(A.mapped_ip(site, robot.slot, cam))
+                streams.append({"cam": cam, "ip": ip, "rtsp": f"rtsp://{ip}:554{path}"})
+            elif site.managed:
+                ip = str(A.server_ip(site))
+                streams.append({"cam": cam, "ip": ip, "rtsp": f"rtsp://{ip}:{A.RTSP_PORT}/{robot.name}-{cam}"})
+        return streams
+
     # --- сервісний тунель ----------------------------------------------------
 
     def render_service(self) -> list[Path]:

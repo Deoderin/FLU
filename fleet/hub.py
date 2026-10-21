@@ -26,6 +26,7 @@ from .render import Renderer
 
 SERIAL_RE = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
 RESPONSE_RE = re.compile(r"FLU1:([A-Za-z0-9+/=\s]+?):END")
+CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
 SCRIPT = Path("server") / "hub" / "flu-hub.sh"
 
 
@@ -102,13 +103,28 @@ def _set_pilot(root: Path, site: str, name: str, pilot_id: int) -> None:
 
 # --- команда для сервера ---------------------------------------------------------
 
-def validate(pilot: str, serial: str | None) -> None:
+def latin_hint(value: str | None) -> str:
+    """Підказка, якщо в значенні кирилиця: «П» і «P» схожі, а «ПФ-01» і «PF-01» — різні номери."""
+    letters = "".join(dict.fromkeys(CYRILLIC_RE.findall(value or "")))
+    return T(f" Тут є кирилиця ({letters}) — наберіть латиницею.", f" It contains Cyrillic ({letters}) - type it in Latin.") if letters else ""
+
+
+def check_pilot(pilot: str | None) -> None:
     if not NAME_RE.match(pilot or ""):
-        raise HubError(T("ім'я пілота: латиниця a-z, цифри й '-', до 20 символів (наприклад, ivan)",
-                         "pilot name: latin a-z, digits and '-', up to 20 characters (e.g. ivan)"))
-    if serial is not None and not SERIAL_RE.match(serial):
-        raise HubError(T("номер НРК: латиниця, цифри, '.', '_' і '-', до 40 символів",
-                         "UGV number: latin letters, digits, '.', '_' and '-', up to 40 characters"))
+        raise HubError(T("ім'я пілота: латиниця a-z, цифри й '-', до 20 символів (наприклад, ivan).",
+                         "pilot name: latin a-z, digits and '-', up to 20 characters (e.g. ivan).") + latin_hint(pilot))
+
+
+def check_serial(serial: str | None) -> None:
+    if not SERIAL_RE.match(serial or ""):
+        raise HubError(T("номер НРК: латиниця, цифри, '.', '_' і '-', до 40 символів (наприклад, PF-01).",
+                         "UGV number: latin letters, digits, '.', '_' and '-', up to 40 characters (e.g. PF-01).") + latin_hint(serial))
+
+
+def validate(pilot: str, serial: str | None) -> None:
+    check_pilot(pilot)
+    if serial is not None:
+        check_serial(serial)
 
 
 def prepare(root: Path, pilot: str, serial: str | None) -> dict:
@@ -117,14 +133,7 @@ def prepare(root: Path, pilot: str, serial: str | None) -> dict:
     inv = Inventory.load(root)
     site = hub_site(inv)
     store = SecretStore(root)
-    # Без ключа тут створився б новий, і сервер замінив би ним старий: пілот або НРК на іншому ноутбуці втратив би зв'язок
-    if pilot in inv.operators and not (store.dir / "operators" / f"{pilot}.json").exists():
-        raise HubError(T(f"пілот {pilot} уже є, але його ключ на іншому ноутбуці: виберіть інше ім'я або перенесіть сюди теку secrets/",
-                         f"pilot {pilot} already exists, but the key is on another laptop: choose another name or copy the secrets/ folder here"))
-    known = next((r for r in inv.robots.values() if r.serial == serial), None)
-    if known and known.provisioned and not (store.dir / "robots" / f"{known.id}.json").exists():
-        raise HubError(T(f"НРК {serial} уже зареєстровано на іншому ноутбуці: додавайте його звідти або перенесіть сюди теку secrets/",
-                         f"UGV {serial} is already registered on another laptop: add it from there or copy the secrets/ folder here"))
+    # Чужі імена й номери НРК перевіряє сервер (flu-hub.sh, check_owner): він бачить усі ноутбуки
     store.operator(pilot)
     robot_id = None
     if serial:
@@ -139,7 +148,35 @@ def command(root: Path, pilot: str, robot_id: int | None = None) -> str:
     if robot_id is not None:
         robot = Inventory.load(root).robot(robot_id)
         args += [robot.serial, wg_pubkey(store.robot(robot_id)["wg_site"])]
-    script = (root / SCRIPT).read_bytes().replace(b"\r\n", b"\n")
+    return server_command(root, args)
+
+
+def admin_command(root: Path, action: str, serial: str | None = None, pilot: str | None = None) -> str:
+    """Службова команда для сервера. Ключі не потрібні: НРК і пілотів сервер знаходить за іменами.
+
+    give — передати НРК пілоту; remove-pilot — видалити пілота; remove-robot — видалити НРК і звільнити слот.
+    """
+    if action == "give":
+        check_serial(serial)
+        check_pilot(pilot)
+        return server_command(root, ["--give", serial, pilot])
+    if action == "remove-pilot":
+        check_pilot(pilot)
+        return server_command(root, ["--remove-pilot", pilot])
+    if action == "remove-robot":
+        check_serial(serial)
+        return server_command(root, ["--remove-robot", serial])
+    raise HubError(T(f"невідома дія: {action}", f"unknown action: {action}"))
+
+
+def server_command(root: Path, args: list[str]) -> str:
+    """Одна команда для вставки на сервері: скрипт flu-hub.sh, стиснутий у base64, і його аргументи.
+
+    Рядки-коментарі потрібні людям у репозиторії, а не серверу: без них команда коротша.
+    Рядок довший за ~8 тис. символів обрізають деякі консолі (і Git Bash, коли його запускає Windows).
+    """
+    lines = (root / SCRIPT).read_bytes().replace(b"\r\n", b"\n").decode().split("\n")
+    script = "\n".join(line for i, line in enumerate(lines) if i == 0 or not line.lstrip().startswith("#")).encode()
     payload = base64.b64encode(gzip.compress(script, mtime=0)).decode()
     quoted = " ".join(f"'{a}'" for a in args)  # у значеннях немає апострофів: їх перевірено вище
     return f"echo {payload} | base64 -d | gunzip > /tmp/flu-hub.sh && bash /tmp/flu-hub.sh {quoted}"

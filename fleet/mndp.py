@@ -134,6 +134,8 @@ def merge(entries, local: list[str] = ()) -> list[dict]:
 def describe(router: dict) -> str:
     model = router.get("board") or router.get("platform") or "MikroTik"
     parts = [model, "MAC " + ", ".join(router.get("macs") or [router["mac"]])]
+    if router.get("identity") and router["identity"] != "MikroTik":
+        parts.insert(0, router["identity"])  # прошитий роутер зветься іменем НРК (nrk-003)
     if router.get("version"):
         parts.append(f"RouterOS {router['version'].split()[0]}")
     ips = router.get("ips") or ([router["ipv4"]] if router.get("ipv4") else [])

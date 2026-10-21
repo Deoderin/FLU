@@ -137,3 +137,35 @@ def test_reset_not_started_without_file(monkeypatch):
         mikrotik.apply_full_config(router, None)
     assert "type=script" in str(exc.value)  # список файлів роутера — для діагностики
     assert not any(c.startswith("/system reset-configuration") for c in router.commands)
+
+
+def test_flashed_ugv_found_over_starlink(monkeypatch):
+    """Ноутбук у Wi-Fi того самого Starlink: кабелю немає, але прошитий НРК видно за його ім'ям."""
+    monkeypatch.setattr(netcheck, "check_router_link", lambda adapters=None: {"status": "no_cable", "message": "кабелю немає"})
+    routers = [{"mac": "A", "ipv4": "192.168.1.1", "identity": "MikroTik"},  # сам роутер Starlink чи інший MikroTik
+               {"mac": "B", "ipv4": "192.168.1.23", "identity": "nrk-003"}]
+    monkeypatch.setattr(mndp, "discover", lambda timeout=3.0: routers)
+    logged = []
+    assert find_bench_router(log=logged.append, name="nrk-003") == "192.168.1.23"
+    assert any("спільну мережу" in line for line in logged)
+    assert not any("кабель:" in line for line in logged)  # знайшли без кабелю — про кабель не пишемо
+    with pytest.raises(MikroTikError):
+        find_bench_router(log=lambda *_: None, name="nrk-009")  # чужий НРК не підхоплюємо
+    assert describe({"mac": "B", "ipv4": "192.168.1.23", "identity": "nrk-003"}).startswith("nrk-003 · ")
+
+
+def test_router_password_sticker_or_ours(monkeypatch):
+    """Новий роутер — пароль з наліпки, уже прошитий — наш: пробуємо обидва."""
+    tried = []
+
+    class Router:
+        def __init__(self, host, password):
+            tried.append(password)
+            if password != "ours":
+                raise MikroTikError("Authentication failed.")
+
+    monkeypatch.setattr(mikrotik, "MikroTik", Router)
+    assert isinstance(mikrotik.open_router("192.168.1.23", ["", "ours"]), Router)
+    assert tried == ["", "ours"]
+    with pytest.raises(MikroTikError, match="Authentication"):
+        mikrotik.open_router("192.168.1.23", ["wrong", "wrong"])

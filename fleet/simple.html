@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FLU · НРК</title>
+<title>UGV Quick Setup</title>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --fg: #161b24; --muted: #5f6878; --line: #dfe3ea; --soft: #eef1f5;
@@ -109,7 +109,7 @@
 <script>
 const I18N = {
   uk: {
-    title: "FLU · налаштування НРК", adv: "Розширений режим",
+    title: "UGV Quick Setup", adv: "Розширений режим",
     intro: "Йдіть по кроках зверху вниз. Де написано «скопіювати» — натисніть кнопку, де «вставити» — клацніть правою кнопкою миші в потрібному місці.",
     s1: "Пілот і НРК", pilot: "Пілот", new_pilot: "+ Новий пілот", new_name: "Ім'я нового пілота (латиницею)", pilot_ph: "наприклад, ivan", serial: "Заводський номер НРК", serial_ph: "наприклад, FLU-2026-0001",
     s1_btn: "Далі", s1_done: "Пілот {pilot} · НРК {serial} ({name})", s1_new: "Інший НРК або пілот",
@@ -139,12 +139,25 @@ const I18N = {
     s5_check: "Перевірити підключення", s5_checking: "Перевіряю кабель і шукаю роутер… (кілька секунд)", s5_found: "Знайдено роутер: {text}",
     s5_noip: "У роутера немає IP-адреси — скиньте його кнопкою Reset до заводських налаштувань.",
     s5_many: "Знайдено кілька роутерів MikroTik: вимкніть Wi-Fi на ноутбуці й лишіть під'єднаним лише роутер НРК.",
+    s5_ours: "Це НРК {name}: знайдено через спільну мережу ({ip}). Можна прошити без кабелю — пароль роутера програма знає сама.",
+    s5_wifi: "Уже прошитий і зібраний НРК можна перепрошити без кабелю: під'єднайте ноутбук до Wi-Fi того самого Starlink, що й НРК, і натисніть «Перевірити підключення».",
     s5_fw: "Якщо Windows спитає дозвіл для Python у мережі — натисніть «Дозволити»: так програма бачить роутер.",
     s5_confirm: "Роутер буде скинуто й перепрошито під цей НРК. Продовжити?",
     s6: "Готово", s6_hint: "Під'єднайте Starlink у порт 1 роутера та увімкніть НРК. Коли він вийде на зв'язок, підключайтеся в QGroundControl:",
     logs: "Журнали", log_saved: "Журнал: {log}", copy_log: "Скопіювати журнал", open_logs: "Відкрити теку з журналами",
     failed_log: "Не вийшло — подробиці в «Ході виконання» нижче. Журнал збережено, його можна надіслати.",
     s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → тип TCP, адреса й порт:",
+    s6_cams: "Камери: QGroundControl → Application Settings → Video → RTSP URL (адреса з рядка під камерою):",
+    s6_cam_auth: "Якщо QGroundControl попросить логін і пароль камери — admin і пароль, яким камери активували.",
+    cam1: "Передня камера", cam2: "Задня камера",
+    adm: "Передати НРК або видалити із сервера", adm_action: "Що зробити",
+    adm_hint: "Команда для сервера, як у кроці 2: скопіюйте й вставте на сервері. Відповідь у програму вставляти не потрібно. Пілотів і НРК сервер знаходить за іменами, тож це можна робити з будь-якого ноутбука.",
+    adm_give: "Передати НРК іншому пілоту", adm_remove_robot: "Видалити НРК із сервера", adm_remove_pilot: "Видалити пілота із сервера",
+    adm_serial: "Заводський номер НРК", adm_to: "Кому (ім'я пілота на сервері)", adm_pilot: "Ім'я пілота",
+    adm_note_give: "Новий пілот одразу побачить НРК, попередній — перестане. Пілот має бути вже доданий на сервер зі свого ноутбука. Сервер покаже адреси НРК для нового пілота.",
+    adm_note_remove_robot: "НРК зникне із сервера й перестане виходити на зв'язок, його слот звільниться. Повернути: додати НРК знову (крок 1) і перепрошити роутер.",
+    adm_note_remove_pilot: "Пілот втратить доступ до сервера, ім'я звільниться. Його НРК лишаться без пілота — передайте їх іншому.",
+    adm_btn: "Скопіювати команду",
     s6_btn: "Перевірити зв'язок з НРК", s6_tunnel: "Спочатку увімкніть тунель пілота {pilot} (крок 4): НРК видно лише через нього.", s6_last: "Остання перевірка: {time}",
     running: "Виконується… {s} с", done: "Готово ✓", failed: "Не вийшло — подробиці нижче", log: "Хід виконання",
     chk: { inventory: "налаштування", registration: "реєстрація", mavlink: "зв'язок з НРК (MAVLink)", params: "параметри", gps: "GPS",
@@ -152,7 +165,7 @@ const I18N = {
            mikrotik_drift: "роутер: зміни", lte: "LTE", arbiter: "арбітр", cam1: "передня камера", cam2: "задня камера" },
   },
   en: {
-    title: "FLU · UGV setup", adv: "Advanced mode",
+    title: "UGV Quick Setup", adv: "Advanced mode",
     intro: "Go through the steps from top to bottom. Where it says \"copy\", press the button; where it says \"paste\", right-click in that place.",
     s1: "Pilot and UGV", pilot: "Pilot", new_pilot: "+ New pilot", new_name: "New pilot name (latin letters)", pilot_ph: "e.g. ivan", serial: "UGV serial number", serial_ph: "e.g. FLU-2026-0001",
     s1_btn: "Next", s1_done: "Pilot {pilot} · UGV {serial} ({name})", s1_new: "Another UGV or pilot",
@@ -182,12 +195,25 @@ const I18N = {
     s5_check: "Check connection", s5_checking: "Checking the cable and looking for the router… (a few seconds)", s5_found: "Router found: {text}",
     s5_noip: "The router has no IP address - reset it to factory settings with the Reset button.",
     s5_many: "Several MikroTik routers found: turn off Wi-Fi on the laptop and keep only the UGV router connected.",
+    s5_ours: "This is UGV {name}: found over the shared network ({ip}). It can be flashed without a cable - the program knows the router password.",
+    s5_wifi: "An already flashed and assembled UGV can be reflashed without a cable: connect the laptop to the Wi-Fi of the same Starlink as the UGV and press \"Check connection\".",
     s5_fw: "If Windows asks to allow Python on the network, press Allow: that is how the program sees the router.",
     s5_confirm: "The router will be reset and flashed for this UGV. Continue?",
     s6: "Done", s6_hint: "Connect Starlink to router port 1 and power on the UGV. When it is online, connect in QGroundControl:",
     logs: "Logs", log_saved: "Log: {log}", copy_log: "Copy log", open_logs: "Open the logs folder",
     failed_log: "It did not work - details in Progress below. The log is saved and can be sent.",
     s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → type TCP, address and port:",
+    s6_cams: "Cameras: QGroundControl → Application Settings → Video → RTSP URL (the address under the camera):",
+    s6_cam_auth: "If QGroundControl asks for the camera login and password: admin and the password the cameras were activated with.",
+    cam1: "Front camera", cam2: "Rear camera",
+    adm: "Give a UGV or remove from the server", adm_action: "What to do",
+    adm_hint: "A command for the server, like in step 2: copy it and paste it on the server. No need to paste the response here. The server finds pilots and UGVs by name, so this works from any laptop.",
+    adm_give: "Give a UGV to another pilot", adm_remove_robot: "Remove a UGV from the server", adm_remove_pilot: "Remove a pilot from the server",
+    adm_serial: "UGV serial number", adm_to: "To (pilot name on the server)", adm_pilot: "Pilot name",
+    adm_note_give: "The new pilot sees the UGV at once, the previous one no longer does. The pilot must already be added to the server from their laptop. The server prints the UGV addresses for the new pilot.",
+    adm_note_remove_robot: "The UGV disappears from the server and goes offline, its slot is freed. To bring it back: add the UGV again (step 1) and reflash the router.",
+    adm_note_remove_pilot: "The pilot loses access to the server and the name is freed. Their UGVs stay without a pilot - give them to another one.",
+    adm_btn: "Copy command",
     s6_btn: "Check the link to the UGV", s6_tunnel: "First turn on the tunnel of pilot {pilot} (step 4): the UGV is visible only through it.", s6_last: "Last check: {time}",
     running: "Running… {s} s", done: "Done ✓", failed: "It did not work - details below", log: "Progress",
     chk: { inventory: "setup", registration: "registration", mavlink: "link to the UGV (MAVLink)", params: "parameters", gps: "GPS",
@@ -359,7 +385,7 @@ function render() {
   const pilot = pilotName();
   const done1 = Boolean(robot && pilot);
   const done3 = Boolean(done1 && robot.provisioned && st.server && st.pilots.includes(pilot));
-  const tun = (st.tunnels || {})[pilot] || { name: `flu-${st.site}-${pilot}`, status: "missing" };  // тунель вибраного пілота
+  const tun = (st.tunnels || {})[pilot] || { name: `${st.site}-${pilot}`, status: "missing" };  // тунель вибраного пілота
   const done4 = tun.status === "running";
   const done5 = Boolean(done3 && robot.baseline);
   const stateOf = (done, ready) => (done ? "done" : ready ? "now" : "locked");
@@ -457,6 +483,7 @@ function render() {
   const found = routerFound && h("div", { class: "status " + routerFound[1] }, ...routerFound[0].map((line) => h("div", {}, line)));
   steps.push(card(5, stateOf(done5, done3), t("s5"),
     h("p", { class: "hint" }, t("s5_hint")),
+    h("p", { class: "hint" }, t("s5_wifi")),
     done5 && h("div", { class: "status ok" }, t("s5_done")),
     h("div", { class: "row" }, btn(t("s5_check"), async () => {
       routerFound = [[t("s5_checking")], "warn"];
@@ -464,13 +491,17 @@ function render() {
       try {
         const res = await api("/api/simple/check-router", {});
         const linkOk = ["ok", "unknown"].includes(res.link.status);
-        const lines = [res.link.message, ...res.routers.map((r) => t("s5_found", { text: r.text }))];
-        const many = res.routers.length > 1 && !res.routers.some((r) => r.ipv4 === "192.168.88.1");
+        // Прошитий НРК зветься своїм ім'ям: його видно й через спільну мережу (Starlink чи Wi-Fi), без кабелю
+        const ours = robot && res.routers.find((r) => r.identity === robot.name && r.ipv4 && !r.ipv4.startsWith("192.168.88."));
+        // Тоді про кабель не пишемо: він не потрібен
+        const lines = [...(ours ? [] : [res.link.message]), ...res.routers.map((r) => t("s5_found", { text: r.text }))];
+        const many = !ours && res.routers.length > 1 && !res.routers.some((r) => r.ipv4 === "192.168.88.1");
         const noip = res.routers.length === 1 && !res.routers[0].ipv4;
+        if (ours) lines.push(t("s5_ours", { name: robot.name, ip: ours.ipv4 }));
         if (many) lines.push(t("s5_many"));
         if (noip) lines.push(t("s5_noip"));
         if (linkOk && !res.routers.length) lines.push(t("s5_fw"));
-        routerFound = [lines, !linkOk || noip ? "bad" : many ? "warn" : "ok"];
+        routerFound = [lines, ours ? "ok" : !linkOk || noip ? "bad" : many ? "warn" : "ok"];
       } catch (e) { routerFound = [[e.message], "bad"]; }
       render();
     })),
@@ -485,12 +516,39 @@ function render() {
   steps.push(card(6, stateOf(Boolean(rep && !rep.fail), done5), t("s6"),
     h("p", { class: "hint" }, t("s6_hint")),
     robot && robot.qgc && h("div", {}, h("p", { class: "hint" }, t("s6_qgc")), h("span", { class: "addr" }, robot.qgc.replace(":", "  :  "))),
+    robot && robot.cameras && robot.cameras.length > 0 && h("div", {}, h("p", { class: "hint" }, t("s6_cams")),
+      ...robot.cameras.map((c) => h("div", { style: "margin: 6px 0" }, h("b", {}, t(c.cam)), " ", h("span", { class: "addr" }, c.ip),
+        h("div", { class: "muted", style: "overflow-wrap: anywhere" }, c.rtsp))),
+      h("p", { class: "hint" }, t("s6_cam_auth"))),
     done5 && !done4 && h("div", { class: "status warn" }, t("s6_tunnel", { pilot })),
     h("div", {}, btn(t("s6_btn"), () => run(6, ["test", "--id", String(robot.id)]), { job: true, disabled: !done5, primary: done5 })),
     rep && h("p", { class: "hint" }, t("s6_last", { time: rep.time })),
     rep && h("ul", { class: "checks" }, rep.checks.filter((c) => c.status !== "SKIP").map((c) => h("li", {},
       h("b", { class: c.status === "PASS" ? "ok" : c.status === "FAIL" ? "bad" : "warn" }, c.status === "PASS" ? "OK" : c.status),
       h("span", {}, I18N[lang].chk[c.key] || c.name, c.detail && h("div", { class: "muted" }, c.detail)))))));
+
+  // Передати НРК або видалити із сервера: службові команди за іменами, ключі не потрібні
+  const act = inputs.adminAction || "give";
+  const actSel = h("select", {}, ...["give", "remove-robot", "remove-pilot"].map((a) => h("option", { value: a }, t("adm_" + a.replace("-", "_")))));
+  actSel.value = act;
+  actSel.addEventListener("change", () => { inputs.adminAction = actSel.value; message[7] = null; render(); });
+  const [las, ias] = field("admSerial", t("adm_serial"), { placeholder: t("serial_ph"), list: "dl-serials" });
+  const [lap, iap] = field("admPilot", act === "give" ? t("adm_to") : t("adm_pilot"), { placeholder: t("pilot_ph"), list: "dl-pilots" });
+  const admBtn = btn(t("adm_btn"), async () => {
+    try {
+      const res = await api("/api/simple/admin-command", { action: act, serial: ias.value.trim(), pilot: iap.value.trim() });
+      if (await copyText(res.command)) { admBtn.textContent = t("copied"); setTimeout(() => (admBtn.textContent = t("adm_btn")), 2500); }
+      message[7] = null;
+    } catch (e) { message[7] = [e.message, "bad"]; render(); }
+  });
+  steps.push(card(7, "", t("adm"),
+    h("p", { class: "hint" }, t("adm_hint")),
+    h("div", { class: "row" }, h("label", { class: "field" }, t("adm_action"), actSel)),
+    h("div", { class: "row" }, act !== "remove-pilot" && las, act !== "remove-robot" && lap),
+    h("datalist", { id: "dl-serials" }, ...st.robots.map((r) => h("option", { value: r.serial }))),
+    h("datalist", { id: "dl-pilots" }, ...st.pilots.map((p) => h("option", { value: p }))),
+    h("p", { class: "hint" }, t("adm_note_" + act.replace("-", "_"))),
+    h("div", {}, admBtn)));
 
   document.getElementById("steps").replaceChildren(...steps.map((s, i) => (i ? [h("div", { style: "height:14px" }), s] : s)).flat());
 }
