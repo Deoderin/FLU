@@ -232,7 +232,8 @@ chmod 600 "$ACL"
 # не переслав би нічого НРК чи пілоту, доданим пізніше. Ставимо потрібні, прибираємо від видалених.
 sync_routes() {
   local want net
-  want=$(wg show "$IFACE" allowed-ips | tr ' \t' '\n\n' | grep / | sort -u || true)
+  # Перше поле — ключ піра (у base64 теж буває «/»), далі — його мережі: беремо лише мережі
+  want=$(wg show "$IFACE" allowed-ips | awk '{ for (i = 2; i <= NF; i++) if ($i ~ /^[0-9.]+\/[0-9]+$/) print $i }' | sort -u)
   for net in $want; do ip -4 route replace "$net" dev "$IFACE"; done
   ip -4 route show dev "$IFACE" | awk '!/proto kernel/ { print ($1 ~ /\//) ? $1 : $1 "/32" }' | while read -r net; do
     grep -qxF "$net" <<< "$want" || ip -4 route del "$net" dev "$IFACE" || true

@@ -239,3 +239,32 @@ def test_server_command_fits_console(fresh):
     """Без коментарів скрипт стискається в команду, яку приймає будь-яка консоль (до ~8 тис. символів)."""
     cmd = prepare(fresh, "pilot-with-long-name", "SERIAL-WITH-A-LONG-NAME-0001")["command"]
     assert len(cmd) < 7500
+
+
+@needs_bash
+def test_server_routes_only_networks(tmp_path):
+    """Маршрути на сервері: лише мережі пірів. У ключах base64 теж буває «/» — їх не чіпаємо."""
+    script = (REPO / hub.SCRIPT).read_text("utf-8")
+    start = script.index("sync_routes() {")
+    func = script[start:script.index("\n}\n", start) + 3]
+    stub = tmp_path / "stub"
+    stub.mkdir()
+    (stub / "wg").write_bytes(
+        b"#!/usr/bin/env bash\n"
+        b"printf 'kI7MS302K3AUyeHKE+tD/PElfkJy1fwflOnY0neIlDA=\t10.150.0.2/32 10.150.16.0/28\n"
+        b"fpz42+vMaE8FjKLhK12db/0Z3/fJlYhwuJ5z5mgQJhM=\t10.150.1.10/32\nZYfGTswchfwpooEsJ1gIkcx45eCrP7wDhPMhhOQLLkU=\t(none)\n'\n")
+    (stub / "ip").write_bytes(
+        b'#!/usr/bin/env bash\nif [ "$*" = "-4 route show dev flu" ]; then\n'
+        b'  printf "10.150.0.0/24 proto kernel scope link src 10.150.0.1\n10.150.1.10 scope link\n10.150.16.48/28 scope link\n"\n'
+        b'else echo "ip $*" >> "$LOG"; fi\n')
+    log = tmp_path / "ip.log"
+    env = {**os.environ, "PATH": str(stub) + os.pathsep + os.environ["PATH"], "LOG": log.as_posix()}
+    r = subprocess.run([BASH, "-c", f"set -euo pipefail; IFACE=flu\n{func}\nsync_routes"], env=env,
+                       capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    assert log.read_text().splitlines() == [
+        "ip -4 route replace 10.150.0.2/32 dev flu",
+        "ip -4 route replace 10.150.1.10/32 dev flu",
+        "ip -4 route replace 10.150.16.0/28 dev flu",
+        "ip -4 route del 10.150.16.48/28 dev flu",  # мережа видаленого НРК
+    ]

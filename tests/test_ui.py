@@ -128,19 +128,19 @@ def test_aws_key_copied_to_ssh_dir(tmp_path, monkeypatch):
     pem.parent.mkdir()
     pem.write_bytes(b"-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----\n")
     # «Копіювати як шлях» у Провіднику дає шлях у лапках
-    assert install_ssh_key(f'"{pem}"', "13.50.196.138") == ".ssh/aws-13.50.196.138.pem"
-    assert (tmp_path / "home" / ".ssh" / "aws-13.50.196.138.pem").read_bytes() == pem.read_bytes()
+    assert install_ssh_key(f'"{pem}"', "203.0.113.10") == ".ssh/aws-203.0.113.10.pem"
+    assert (tmp_path / "home" / ".ssh" / "aws-203.0.113.10.pem").read_bytes() == pem.read_bytes()
 
     with pytest.raises(ValueError, match="не знайдено"):
-        install_ssh_key(str(tmp_path / "nope.pem"), "13.50.196.138")
+        install_ssh_key(str(tmp_path / "nope.pem"), "203.0.113.10")
     ppk = tmp_path / "key.ppk"
     ppk.write_text("PuTTY-User-Key-File-3: ssh-rsa\n")
     with pytest.raises(ValueError, match="PuTTY"):
-        install_ssh_key(str(ppk), "13.50.196.138")
+        install_ssh_key(str(ppk), "203.0.113.10")
     notes = tmp_path / "notes.txt"
     notes.write_text("hello")
     with pytest.raises(ValueError, match="не файл ключа"):
-        install_ssh_key(str(notes), "13.50.196.138")
+        install_ssh_key(str(notes), "203.0.113.10")
 
 
 def test_ssh_terminal_with_aws_key(simple_ui, tmp_path, monkeypatch):
@@ -152,12 +152,12 @@ def test_ssh_terminal_with_aws_key(simple_ui, tmp_path, monkeypatch):
     monkeypatch.setattr(fleet.ui.os, "name", "nt")
     pem = tmp_path / "key.pem"
     pem.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
-    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "ubuntu", "key": str(pem)})
+    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "ubuntu", "key": str(pem)})
     assert status == 200
-    assert started[-1][-4:] == ["ssh", "-i", ".ssh/aws-13.50.196.138.pem", "ubuntu@13.50.196.138"]
-    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "root"})
-    assert status == 200 and started[-1][-2:] == ["ssh", "root@13.50.196.138"]  # без ключа — як раніше
-    status, body = call(simple_ui, "/api/simple/ssh", {"host": "13.50.196.138", "user": "ubuntu", "key": str(tmp_path / "x.pem")})
+    assert started[-1][-4:] == ["ssh", "-i", ".ssh/aws-203.0.113.10.pem", "ubuntu@203.0.113.10"]
+    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "root"})
+    assert status == 200 and started[-1][-2:] == ["ssh", "root@203.0.113.10"]  # без ключа — як раніше
+    status, body = call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "ubuntu", "key": str(tmp_path / "x.pem")})
     assert status == 400 and "не знайдено" in json.loads(body)["error"]
 
 
