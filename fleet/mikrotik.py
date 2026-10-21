@@ -20,6 +20,8 @@ ERROR_RE = re.compile(
 )
 # Рядки /export, що змінюються самі собою (дата, модель, серійний номер)
 VOLATILE_RE = re.compile(r"^# (?:\S+ \S+ by RouterOS|software id|model|serial number)")
+# Налаштування, які RouterOS міняє сам: часовий пояс визначається, щойно з'являється інтернет
+SELF_SET_RE = re.compile(r"^/system clock set time-zone-name=\S+$")
 
 
 class MikroTikError(Exception):
@@ -287,7 +289,28 @@ def save_baseline(robot_dir: Path, mt: MikroTik) -> Path:
     return path
 
 
+def export_lines(text: str) -> list[str]:
+    """/export terse для порівняння: без коментарів, кожна команда — одним рядком.
+
+    Коментар стану («# Interface not active», поки в ether1 немає Starlink) розриває рядок
+    на «/ip dhcp-client» і «add ...»: склеюємо назад, щоб стан інтерфейсу не рахувався дрейфом.
+    """
+    lines: list[str] = []
+    menu = ""
+    for line in text.splitlines():
+        if not line.strip() or line.startswith("#") or SELF_SET_RE.match(line):
+            continue
+        if line.startswith("/"):
+            menu = line
+            lines.append(line)
+            continue
+        if menu and lines and lines[-1] == menu:
+            lines.pop()
+        lines.append(f"{menu} {line}" if menu else line)
+    return lines
+
+
 def drift(baseline: str, current: str) -> list[str]:
     """Рядки, що з'явилися або зникли порівняно з еталоном."""
-    old, new = set(baseline.splitlines()), set(current.splitlines())
+    old, new = set(export_lines(baseline)), set(export_lines(current))
     return [f"- {line}" for line in sorted(old - new)] + [f"+ {line}" for line in sorted(new - old)]

@@ -153,6 +153,23 @@ def test_drift():
     assert drift("a\nb\n", "a\nc\n") == ["- b", "+ c"]
 
 
+def test_drift_ignores_what_routeros_changes_itself():
+    """Еталон знято на стенді без Starlink у ether1; потім з'явився інтернет — це не дрейф."""
+    bench = ('/ip address add address=192.168.88.1/24 interface=br-lan\n/ip dhcp-client\n# Interface not active\n'
+             'add comment="fleet: wan" interface=ether1\n/ip dhcp-server add interface=br-lan name=fleet-lan\n')
+    field = ('/ip address add address=192.168.88.1/24 interface=br-lan\n'
+             '/ip dhcp-client add comment="fleet: wan" interface=ether1\n'
+             '/ip dhcp-server add interface=br-lan name=fleet-lan\n/system clock set time-zone-name=Europe/Kiev\n')
+    assert drift(bench, field) == []
+    # справжня зміна лишається видимою
+    assert drift(bench, field.replace("ether1", "ether5")) == [
+        '- /ip dhcp-client add comment="fleet: wan" interface=ether1',
+        '+ /ip dhcp-client add comment="fleet: wan" interface=ether5',
+    ]
+    assert drift(bench, field + "/system clock set time-zone-autodetect=no time-zone-name=UTC\n") == [
+        "+ /system clock set time-zone-autodetect=no time-zone-name=UTC"]
+
+
 def test_lan_addresses_fit_mapped_block():
     for host in A.HOSTS:
         assert A.lan_ip(host) in A.LAN_MAPPED
