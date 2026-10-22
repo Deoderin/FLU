@@ -16,21 +16,3 @@
 #     site: main
 #     service_tunnel: false
 robots:
-  - id: 1
-    serial: bort-1
-    platform: flu-v1
-    site: main
-    slot: 1
-    service_tunnel: false
-  - id: 2
-    serial: '4545511'
-    platform: flu-v1
-    site: main
-    slot: 2
-    service_tunnel: false
-  - id: 3
-    serial: PF-01
-    platform: flu-v1
-    site: main
-    slot: 3
-    service_tunnel: false
