@@ -224,6 +224,13 @@ def find_bench_router(log=print, timeout: float = 3.0, name: str | None = None) 
     link = netcheck.check_router_link()
     log(T(f"  кабель: {link['message']}", f"  cable: {link['message']}"))
     link_ok = link["status"] in ("ok", "unknown")
+    if name and not link_ok:
+        # Без кабелю прошити можна лише наш НРК, а його в спільній мережі немає. Кажемо, що шукали
+        # і чого там не видно, а не лише «немає порту» (і не «вимкніть Wi-Fi», коли роутерів там кілька)
+        raise MikroTikError(T(f"{name} через Wi-Fi не знайдено. Без кабелю видно лише НРК, уже прошитий цією програмою, коли ноутбук "
+                    f"у Wi-Fi того самого Starlink. Новий чи скинутий роутер — тільки кабелем: {link['message']}",
+                    f"{name} was not found over Wi-Fi. Without a cable only a UGV already flashed by this program is visible, "
+                    f"when the laptop is on the Wi-Fi of the same Starlink. A new or reset router needs a cable: {link['message']}"))
     factory = [r for r in routers if r["ipv4"] == BENCH_HOST]
     if len(factory) == 1:
         if not link_ok:

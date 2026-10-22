@@ -9,12 +9,15 @@
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import itertools
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -235,22 +238,42 @@ def pilot_conf(root: Path, pilot: str) -> Path:
     return path
 
 
-def install_ssh_key(src: str, host: str) -> str:
+MAX_KEY_BYTES = 64 * 1024
+
+# Вікно ssh: одразу каже, куди підключаємося, і не висить мовчки, якщо порт 22 закритий.
+# Лише ASCII: cmd ненадійно показує кирилицю.
+SSH_CMD = """@echo off
+title {app} - ssh {target}
+cd /d "%USERPROFILE%"
+echo Connecting to {target} ...
+ssh -o ConnectTimeout=15 {key}{target}
+if errorlevel 255 (
+  echo.
+  echo Could not connect to {host}. Check:
+  echo  - the server is running and the address {host} is right;
+  echo  - port 22 is open for this computer: AWS - EC2 - Security group - Inbound rules - SSH - My IP.
+)
+"""
+
+
+def check_ssh_target(host: str, user: str) -> None:
+    if not HOST_RE.match(host) or not USER_RE.match(user):
+        raise ValueError(T("некоректна адреса сервера або ім'я користувача", "invalid server address or user name"))
+
+
+def save_ssh_key(data: bytes, host: str, name: str = "") -> str:
     """AWS: ключ .pem сервера -> ~/.ssh/aws-<host>.pem; повертає шлях відносно домашньої теки.
 
     ssh у Windows відкидає ключ, до якого мають доступ інші користувачі (UNPROTECTED PRIVATE KEY FILE),
-    а файл, скопійований у ~/.ssh, успадковує права лише власника. Відносний шлях з перевіреним host
-    іде в командний рядок cmd без лапок і спецсимволів.
+    а файл у ~/.ssh успадковує права лише власника. Ключ там і лишається: наступного разу для цього
+    сервера вибирати його вже не треба. host перевірено (check_ssh_target), тож шлях безпечний.
     """
-    path = Path(src.strip().strip('"'))  # «Копіювати як шлях» у Провіднику додає лапки
-    if not path.is_file():
-        raise ValueError(T(f"файл ключа не знайдено: {path}", f"key file not found: {path}"))
-    data = path.read_bytes()
     if b"PuTTY-User-Key-File" in data:
         raise ValueError(T("це ключ PuTTY (.ppk), а потрібен .pem: у PuTTYgen — Conversions → Export OpenSSH key",
                            "this is a PuTTY key (.ppk), a .pem is needed: in PuTTYgen - Conversions -> Export OpenSSH key"))
-    if b"PRIVATE KEY" not in data:
-        raise ValueError(T(f"{path.name} — не файл ключа .pem", f"{path.name} is not a .pem key file"))
+    if len(data) > MAX_KEY_BYTES or b"PRIVATE KEY" not in data:
+        name = name or T("файл", "the file")
+        raise ValueError(T(f"{name} — не файл ключа .pem", f"{name} is not a .pem key file"))
     rel = f".ssh/aws-{host}.pem"
     dst = Path.home() / rel
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -258,19 +281,36 @@ def install_ssh_key(src: str, host: str) -> str:
     return rel
 
 
-def open_ssh_terminal(host: str, user: str, key: str = "") -> None:
-    """Нове вікно консолі з `ssh user@host`: пілот лише вводить пароль і вставляє команду.
+def install_ssh_key(src: str, host: str) -> str:
+    """Те саме для шляху до файлу ключа."""
+    path = Path(src.strip().strip('"'))  # «Копіювати як шлях» у Провіднику додає лапки
+    if not path.is_file():
+        raise ValueError(T(f"файл ключа не знайдено: {path}", f"key file not found: {path}"))
+    return save_ssh_key(path.read_bytes(), host, path.name)
 
-    key — файл ключа .pem для серверів AWS: там вхід лише за ключем, без пароля.
+
+def saved_ssh_key(host: str) -> str | None:
+    """Ключ, збережений для цього сервера раніше."""
+    rel = f".ssh/aws-{host}.pem"
+    return rel if (Path.home() / rel).is_file() else None
+
+
+def open_ssh_terminal(host: str, user: str, key: str | None = None) -> Path | None:
+    """Нове вікно консолі з `ssh user@host`: пілот лише вводить пароль (або входить ключем AWS) і вставляє команду.
+
+    key — шлях до ключа .pem відносно домашньої теки (save_ssh_key / saved_ssh_key).
     """
-    if not HOST_RE.match(host) or not USER_RE.match(user):
-        raise ValueError(T("некоректна адреса сервера або ім'я користувача", "invalid server address or user name"))
+    check_ssh_target(host, user)
+    target = f"{user}@{host}"
     if os.name != "nt":
-        hint = f"ssh -i {key.strip()} {user}@{host}" if key.strip() else f"ssh {user}@{host}"
+        hint = f"ssh -i ~/{key} {target}" if key else f"ssh {target}"
         raise ValueError(T(f"відкрийте термінал і виконайте: {hint}", f"open a terminal and run: {hint}"))
-    ssh = ["ssh", "-i", install_ssh_key(key, host)] if key.strip() else ["ssh"]
-    # start "" — порожній заголовок вікна, далі сама команда; cwd — домашня тека, від неї шлях до ключа
-    subprocess.Popen(["cmd", "/c", "start", "", "cmd", "/k", *ssh, f"{user}@{host}"], cwd=str(Path.home()))
+    script = Path(tempfile.gettempdir()) / f"fleet-ssh-{host}.cmd"
+    text = SSH_CMD.format(app=APP_NAME, target=target, host=host, key=f"-i {key} " if key else "")
+    script.write_text(text.replace("\n", "\r\n"), encoding="ascii")
+    # start "" — порожній заголовок вікна, далі сама команда
+    subprocess.Popen(["cmd", "/c", "start", "", "cmd", "/k", str(script)], cwd=str(Path.home()))
+    return script
 
 
 class UiServer(ThreadingHTTPServer):
@@ -409,10 +449,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"link": link, "routers": routers})
             if url.path == "/api/simple/ssh":
                 host, user = str(body.get("host", "")).strip(), str(body.get("user", "root")).strip() or "root"
-                key = str(body.get("key", "")).strip()
+                check_ssh_target(host, user)  # до збереження ключа: host іде в ім'я файлу
+                if body.get("key_data"):  # файл, вибраний у майстрі
+                    try:
+                        data = base64.b64decode(str(body["key_data"]), validate=True)
+                    except (binascii.Error, ValueError):
+                        raise ValueError(T("файл ключа пошкоджено — виберіть його ще раз",
+                                           "the key file is damaged - choose it again")) from None
+                    key = save_ssh_key(data, host, str(body.get("key_name", "")))
+                elif str(body.get("key", "")).strip():
+                    key = install_ssh_key(str(body["key"]), host)
+                else:
+                    key = saved_ssh_key(host)
                 open_ssh_terminal(host, user, key)
                 ui_log(root, f"ssh: opened terminal {user}@{host}" + (" with .pem key (AWS)" if key else ""))
-                return self._json({"ok": True})
+                return self._json({"ok": True, "key": bool(key)})
             if url.path == "/api/simple/admin-command":
                 act, serial, pilot = (str(body.get(k) or "").strip() for k in ("action", "serial", "pilot"))
                 cmd = admin_command(root, act, serial=serial or None, pilot=pilot or None)

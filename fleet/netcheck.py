@@ -14,10 +14,13 @@ from .i18n import T
 
 ROUTER_NET = ipaddress.ip_network("192.168.88.0/24")
 
-# Фізичні дротові адаптери (тип 802.3), їхній стан, DHCP і адреси IPv4
+# Дротові адаптери (802.3), їхній стан, DHCP і адреси IPv4. Не -Physical: USB-Ethernet перехідник
+# Windows не вважає «фізичним» (ConnectorPresent=False), а PhysicalMediaType у нього буває Unspecified.
+# Справжній адаптер сидить на шині PCI чи USB; віртуальні (Hamachi, WireGuard, VPN) — ні.
 PS_ADAPTERS = r"""
 $ErrorActionPreference = 'SilentlyContinue'
-@(Get-NetAdapter -Physical | Where-Object { $_.PhysicalMediaType -eq '802.3' } | ForEach-Object {
+@(Get-NetAdapter | Where-Object { $_.MediaType -eq '802.3' -and $_.PhysicalMediaType -notmatch '802\.11|Wireless|BlueTooth' -and
+                                  -not $_.Virtual -and ($_.HardwareInterface -or $_.PnPDeviceID -match '^(USB|PCI)\\') } | ForEach-Object {
   $if = Get-NetIPInterface -InterfaceIndex $_.ifIndex -AddressFamily IPv4
   $ip = Get-NetIPAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4
   [pscustomobject]@{ name = $_.Name; up = ($_.Status -eq 'Up'); dhcp = ($if.Dhcp -eq 'Enabled');
@@ -60,13 +63,15 @@ def check_router_link(adapters: list[dict] | None = None) -> dict:
 
     if not adapters:
         return {"status": "no_adapter", "message": T(
-            "у ноутбука немає порту Ethernet. Під'єднайте USB-Ethernet перехідник і кабель від роутера",
-            "the laptop has no Ethernet port. Plug in a USB-Ethernet adapter and the cable from the router")}
+            "не бачу дротового порту Ethernet. Під'єднайте USB-Ethernet перехідник (зачекайте, поки Windows його встановить) "
+            "і кабель від роутера в порт 5",
+            "no wired Ethernet port found. Plug in a USB-Ethernet adapter (wait until Windows installs it) "
+            "and the cable from the router into port 5")}
     up = [a for a in adapters if a["up"]]
     if not up:
         return {"status": "no_cable", "message": T(
-            "кабель не під'єднано або роутер вимкнено: увімкніть роутер і вставте кабель у порт 2, 3, 4 або 5",
-            "no cable or the router is off: power on the router and plug the cable into port 2, 3, 4 or 5")}
+            "кабель не під'єднано або роутер вимкнено: увімкніть роутер і вставте кабель у порт 5",
+            "no cable or the router is off: power on the router and plug the cable into port 5")}
     for a in up:
         for ip in a["ips"]:
             if ipaddress.ip_address(ip) in ROUTER_NET:

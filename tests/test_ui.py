@@ -144,21 +144,41 @@ def test_aws_key_copied_to_ssh_dir(tmp_path, monkeypatch):
 
 
 def test_ssh_terminal_with_aws_key(simple_ui, tmp_path, monkeypatch):
+    """Ключ вибирають у майстрі (вміст файлу), програма кладе його в ~/.ssh і далі бере сама."""
+    import base64
+
     import fleet.ui
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setattr(fleet.ui.tempfile, "gettempdir", lambda: str(tmp_path / "tmp"))
     started = []
     monkeypatch.setattr(fleet.ui.subprocess, "Popen", lambda args, **kw: started.append(args))
     monkeypatch.setattr(fleet.ui.os, "name", "nt")
-    pem = tmp_path / "key.pem"
-    pem.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
-    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "ubuntu", "key": str(pem)})
+
+    def ssh_line() -> str:
+        script = Path(started[-1][-1]).read_text("ascii")
+        assert "echo Connecting to" in script and "if errorlevel 255" in script  # вікно не мовчить
+        return next(line for line in script.splitlines() if line.startswith("ssh "))
+
+    pem = b"-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n"
+    key = {"key_data": base64.b64encode(pem).decode(), "key_name": "flu.pem"}
+    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "ubuntu", **key})
     assert status == 200
-    assert started[-1][-4:] == ["ssh", "-i", ".ssh/aws-203.0.113.10.pem", "ubuntu@203.0.113.10"]
-    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "root"})
-    assert status == 200 and started[-1][-2:] == ["ssh", "root@203.0.113.10"]  # без ключа — як раніше
-    status, body = call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "ubuntu", "key": str(tmp_path / "x.pem")})
-    assert status == 400 and "не знайдено" in json.loads(body)["error"]
+    assert ssh_line() == "ssh -o ConnectTimeout=15 -i .ssh/aws-203.0.113.10.pem ubuntu@203.0.113.10"
+    assert (tmp_path / "home" / ".ssh" / "aws-203.0.113.10.pem").read_bytes() == pem
+    # наступного разу ключ вибирати не треба
+    assert call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "ubuntu"})[0] == 200
+    assert ssh_line() == "ssh -o ConnectTimeout=15 -i .ssh/aws-203.0.113.10.pem ubuntu@203.0.113.10"
+    # інший сервер без ключа — звичайний вхід за паролем
+    assert call(simple_ui, "/api/simple/ssh", {"host": "198.51.100.7", "user": "root"})[0] == 200
+    assert ssh_line() == "ssh -o ConnectTimeout=15 root@198.51.100.7"
+
+    status, body = call(simple_ui, "/api/simple/ssh", {"host": "203.0.113.10", "user": "ubuntu",
+                                                       "key_data": base64.b64encode(b"hello").decode(), "key_name": "notes.txt"})
+    assert status == 400 and "notes.txt — не файл ключа" in json.loads(body)["error"]
+    status, _ = call(simple_ui, "/api/simple/ssh", {"host": "../evil", "user": "ubuntu", **key})
+    assert status == 400 and not (tmp_path / "home" / "evil.pem").exists()  # адресу перевірено до запису ключа
 
 
 def test_router_password_never_shown():

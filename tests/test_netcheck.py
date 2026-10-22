@@ -10,7 +10,7 @@ def eth(up=True, dhcp=True, ips=()):
 
 
 @pytest.mark.parametrize("adapters, status, text", [
-    ([], "no_adapter", "немає порту Ethernet"),
+    ([], "no_adapter", "не бачу дротового порту"),
     ([eth(up=False)], "no_cable", "кабель не під'єднано"),
     ([eth(ips=["192.168.88.254"])], "ok", "192.168.88.254"),
     ([eth(dhcp=False, ips=["192.168.50.100", "192.168.1.100"])], "static", "192.168.50.100, 192.168.1.100"),

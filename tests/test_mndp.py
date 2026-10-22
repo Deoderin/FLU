@@ -149,8 +149,10 @@ def test_flashed_ugv_found_over_starlink(monkeypatch):
     assert find_bench_router(log=logged.append, name="nrk-003") == "192.168.1.23"
     assert any("спільну мережу" in line for line in logged)
     assert not any("кабель:" in line for line in logged)  # знайшли без кабелю — про кабель не пишемо
-    with pytest.raises(MikroTikError):
+    with pytest.raises(MikroTikError) as exc:
         find_bench_router(log=lambda *_: None, name="nrk-009")  # чужий НРК не підхоплюємо
+    # кажемо, що шукали через Wi-Fi і чому не знайшли, а не лише про кабель
+    assert "nrk-009 через Wi-Fi не знайдено" in str(exc.value) and "кабелю немає" in str(exc.value)
     assert describe({"mac": "B", "ipv4": "192.168.1.23", "identity": "nrk-003"}).startswith("nrk-003 · ")
 
 

@@ -119,8 +119,9 @@ const I18N = {
     s2a: "1. Відкрийте сервер", host: "Адреса сервера", host_ph: "IP-адреса сервера з панелі хостингу", user: "Користувач",
     s2a_btn: "Відкрити термінал сервера", s2a_hint: "Відкриється чорне вікно. Якщо спитає «Are you sure you want to continue connecting» — надрукуйте yes і Enter. Потім введіть пароль сервера і Enter (символів пароля не видно — так і має бути).",
     s2a_alt: "Або зайдіть на сервер через веб-консоль у панелі хостингу (на AWS: EC2 → ваш сервер → Connect → EC2 Instance Connect).",
-    key: "Файл ключа .pem — лише для AWS", key_ph: "C:\\Users\\...\\Downloads\\ключ.pem",
-    key_hint: "Лише для серверів AWS (Amazon): там вхід не за паролем, а за файлом ключа .pem, який ви завантажили під час створення сервера. Знайдіть його в Провіднику, клацніть правою кнопкою миші → «Копіювати як шлях» і вставте сюди. Користувач на AWS — ubuntu, пароль не знадобиться. Для інших серверів залиште поле порожнім.",
+    key: "Файл ключа .pem — лише для AWS", key_pick: "Вибрати файл ключа…", key_change: "Інший файл…",
+    key_none: "не вибрано — для серверів не з AWS не потрібен", key_chosen: "вибрано: {name}", key_clear: "прибрати",
+    key_hint: "Лише для серверів AWS (Amazon): там вхід не за паролем, а за файлом ключа .pem, який ви завантажили під час створення сервера. Виберіть його один раз — програма запам'ятає ключ для цього сервера. Користувач на AWS — ubuntu, пароль не знадобиться.",
     key_fw: "На AWS відкрийте ще й порт: EC2 → ваш сервер → Security → Security group → Edit inbound rules → Add rule: Custom UDP, порт 51820 (або той, що назве сервер), джерело 0.0.0.0/0.",
     s2b: "2. Скопіюйте команду й вставте її на сервері", s2b_btn: "Скопіювати команду", copied: "Скопійовано ✓",
     s2b_hint: "У вікні сервера клацніть правою кнопкою миші — команда вставиться — і натисніть Enter. Зачекайте до хвилини.",
@@ -141,6 +142,8 @@ const I18N = {
     s5_many: "Знайдено кілька роутерів MikroTik: вимкніть Wi-Fi на ноутбуці й лишіть під'єднаним лише роутер НРК.",
     s5_ours: "Це НРК {name}: знайдено через спільну мережу ({ip}). Можна прошити без кабелю — пароль роутера програма знає сама.",
     s5_wifi: "Уже прошитий і зібраний НРК можна перепрошити без кабелю: під'єднайте ноутбук до Wi-Fi того самого Starlink, що й НРК, і натисніть «Перевірити підключення».",
+    s5_none: "Роутерів MikroTik у мережі не знайдено — ні кабелем, ні через Wi-Fi.",
+    s5_not_ours: "НРК {name} через Wi-Fi не знайдено. Без кабелю видно лише НРК, уже прошитий цією програмою, коли ноутбук у Wi-Fi того самого Starlink. Новий чи скинутий роутер — тільки кабелем.",
     s5_fw: "Якщо Windows спитає дозвіл для Python у мережі — натисніть «Дозволити»: так програма бачить роутер.",
     s5_confirm: "Роутер буде скинуто й перепрошито під цей НРК. Продовжити?",
     s6: "Готово", s6_hint: "Під'єднайте Starlink у порт 1 роутера та увімкніть НРК. Коли він вийде на зв'язок, підключайтеся в QGroundControl:",
@@ -175,8 +178,9 @@ const I18N = {
     s2a: "1. Open the server", host: "Server address", host_ph: "server IP from the hosting panel", user: "User",
     s2a_btn: "Open server terminal", s2a_hint: "A black window opens. If it asks \"Are you sure you want to continue connecting\", type yes and Enter. Then type the server password and Enter (the password is not shown - that is expected).",
     s2a_alt: "Or log in to the server through the web console of your hosting panel (on AWS: EC2 → your server → Connect → EC2 Instance Connect).",
-    key: ".pem key file - AWS only", key_ph: "C:\\Users\\...\\Downloads\\key.pem",
-    key_hint: "Only for AWS (Amazon) servers: they log in with the .pem key file you downloaded when creating the server, not with a password. Find it in Explorer, right-click it → \"Copy as path\" and paste it here. The AWS user is ubuntu, no password is needed. Leave the field empty for other servers.",
+    key: ".pem key file - AWS only", key_pick: "Choose the key file…", key_change: "Another file…",
+    key_none: "not chosen - not needed for servers outside AWS", key_chosen: "chosen: {name}", key_clear: "remove",
+    key_hint: "Only for AWS (Amazon) servers: they log in with the .pem key file you downloaded when creating the server, not with a password. Choose it once - the program remembers the key for this server. The AWS user is ubuntu, no password is needed.",
     key_fw: "On AWS also open the port: EC2 → your server → Security → Security group → Edit inbound rules → Add rule: Custom UDP, port 51820 (or the one the server names), source 0.0.0.0/0.",
     s2b: "2. Copy the command and paste it on the server", s2b_btn: "Copy command", copied: "Copied ✓",
     s2b_hint: "Right-click in the server window - the command is pasted - and press Enter. Wait up to a minute.",
@@ -197,6 +201,8 @@ const I18N = {
     s5_many: "Several MikroTik routers found: turn off Wi-Fi on the laptop and keep only the UGV router connected.",
     s5_ours: "This is UGV {name}: found over the shared network ({ip}). It can be flashed without a cable - the program knows the router password.",
     s5_wifi: "An already flashed and assembled UGV can be reflashed without a cable: connect the laptop to the Wi-Fi of the same Starlink as the UGV and press \"Check connection\".",
+    s5_none: "No MikroTik routers found on the network - neither by cable nor over Wi-Fi.",
+    s5_not_ours: "UGV {name} was not found over Wi-Fi. Without a cable only a UGV already flashed by this program is visible, when the laptop is on the Wi-Fi of the same Starlink. A new or reset router needs a cable.",
     s5_fw: "If Windows asks to allow Python on the network, press Allow: that is how the program sees the router.",
     s5_confirm: "The router will be reset and flashed for this UGV. Continue?",
     s6: "Done", s6_hint: "Connect Starlink to router port 1 and power on the UGV. When it is online, connect in QGroundControl:",
@@ -420,7 +426,22 @@ function render() {
   const [lh, ih] = field("host", t("host"), { placeholder: t("host_ph"), value: store.get("fleet-server") || (st.server ? st.server.host : "") });
   const [lu, iu] = field("user", t("user"), { value: store.get("fleet-ssh-user") || "root" });
   lu.style.flex = "0 1 140px";
-  const [lk, ik] = field("key", t("key"), { placeholder: t("key_ph"), value: store.get("fleet-ssh-key") || "" });
+  // Ключ .pem (AWS) вибирається вікном вибору файлу; вміст іде в програму, вона кладе його в ~/.ssh
+  const keyInput = h("input", { type: "file", accept: ".pem,.key,.ppk", style: "display:none" });
+  keyInput.addEventListener("change", async () => {
+    const file = keyInput.files[0];
+    if (!file) return;
+    let bin = "";
+    new Uint8Array(await file.arrayBuffer()).forEach((b) => (bin += String.fromCharCode(b)));
+    inputs.keyData = btoa(bin);
+    inputs.keyName = file.name;
+    render();
+  });
+  const keyRow = h("div", { class: "row", style: "align-items: center" },
+    h("button", { class: "btn", onclick: () => keyInput.click() }, inputs.keyName ? t("key_change") : t("key_pick")),
+    h("span", { class: inputs.keyName ? "summary" : "hint" }, inputs.keyName ? t("key_chosen", { name: inputs.keyName }) : t("key_none")),
+    inputs.keyName && h("button", { class: "link", onclick: () => { inputs.keyData = null; inputs.keyName = null; render(); } }, t("key_clear")),
+    keyInput);
   const copyBtn = btn(t("s2b_btn"), async () => {
     if (!command) await prepareCommand(pilot, robot.serial);
     if (await copyText(command)) { copyBtn.textContent = t("copied"); setTimeout(() => (copyBtn.textContent = t("s2b_btn")), 2500); }
@@ -428,16 +449,17 @@ function render() {
   steps.push(card(2, stateOf(done3, done1), t("s2"),
     h("div", { class: "sub" }, h("b", {}, t("s2a")),
       h("div", { class: "row" }, lh, lu, btn(t("s2a_btn"), async () => {
-        const host = ih.value.trim(), user = iu.value.trim(), key = ik.value.trim();
+        const host = ih.value.trim(), user = iu.value.trim();
         try {
-          store.set("fleet-server", host); store.set("fleet-ssh-user", user); store.set("fleet-ssh-key", key);
-          await api("/api/simple/ssh", { host, user, key }); message[2] = null;
+          store.set("fleet-server", host); store.set("fleet-ssh-user", user);
+          await api("/api/simple/ssh", { host, user, key_data: inputs.keyData || "", key_name: inputs.keyName || "" });
+          message[2] = null;
         }
         catch (e) { message[2] = [e.message, "bad"]; }
         render();
       })),
       h("p", { class: "hint" }, t("s2a_hint")), h("p", { class: "hint" }, t("s2a_alt")),
-      h("div", { class: "row" }, lk),
+      h("div", { class: "hint" }, t("key")), keyRow,
       h("p", { class: "hint" }, t("key_hint")), h("p", { class: "hint" }, t("key_fw"))),
     h("div", { class: "sub" }, h("b", {}, t("s2b")),
       h("div", { class: "row" }, copyBtn,
@@ -500,7 +522,10 @@ function render() {
         if (ours) lines.push(t("s5_ours", { name: robot.name, ip: ours.ipv4 }));
         if (many) lines.push(t("s5_many"));
         if (noip) lines.push(t("s5_noip"));
-        if (linkOk && !res.routers.length) lines.push(t("s5_fw"));
+        if (!res.routers.length) lines.push(t("s5_none"));
+        // Без кабелю пошук ішов через Wi-Fi: кажемо, чого там не видно, а не лише «немає порту»
+        if (robot && !ours && !linkOk) lines.push(t("s5_not_ours", { name: robot.name }));
+        if (!res.routers.length) lines.push(t("s5_fw"));
         routerFound = [lines, ours ? "ok" : !linkOk || noip ? "bad" : many ? "warn" : "ok"];
       } catch (e) { routerFound = [[e.message], "bad"]; }
       render();
