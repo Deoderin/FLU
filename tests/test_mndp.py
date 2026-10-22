@@ -171,3 +171,67 @@ def test_router_password_sticker_or_ours(monkeypatch):
     assert tried == ["", "ours"]
     with pytest.raises(MikroTikError, match="Authentication"):
         mikrotik.open_router("192.168.1.23", ["wrong", "wrong"])
+
+
+def test_wrong_password_is_not_timeout(monkeypatch):
+    """Роутер відповів «пароль не той» — це й кажемо, навіть якщо інша спроба впала з тайм-аутом."""
+    import paramiko
+
+    def connect(self, host, **kw):
+        raise paramiko.AuthenticationException("Authentication failed.")
+
+    monkeypatch.setattr(paramiko.SSHClient, "connect", connect)
+    with pytest.raises(mikrotik.MikroTikAuthError, match="пароль не підійшов"):
+        mikrotik.MikroTik("192.168.88.1", "wrong")
+
+    class Router:
+        def __init__(self, host, password):
+            if password == "wrong":
+                raise mikrotik.MikroTikAuthError("пароль не підійшов")
+            raise MikroTikError("timed out")
+
+    monkeypatch.setattr(mikrotik, "MikroTik", Router)
+    with pytest.raises(mikrotik.MikroTikAuthError):
+        mikrotik.open_router("192.168.88.1", ["wrong", "", "ours"])
+
+
+CAP_ROUTER = {"mac": "D0:EA:11:D3:BB:99", "ipv4": "192.168.68.128", "identity": "MikroTik", "board": "E60iUGS",
+              "interface": "bridgeLocal/ether2"}
+
+
+def test_cap_mode_router_behind_cable(monkeypatch):
+    """Reset тримали задовго: роутер у режимі CAP, ноутбук у його порту отримав адресу домашньої мережі."""
+    monkeypatch.setattr(netcheck, "check_router_link", lambda adapters=None: {"status": "foreign", "message": "не від скинутого роутера"})
+    monkeypatch.setattr(mndp, "discover", lambda timeout=3.0: [CAP_ROUTER])
+    logged = []
+    assert find_bench_router(log=logged.append, name="nrk-001") == "192.168.68.128"
+    assert any("режимі CAP" in line for line in logged)
+    assert mndp.cap_mode(CAP_ROUTER) and not mndp.cap_mode({**CAP_ROUTER, "interface": "bridge/ether2"})
+    # кабель від домашньої мережі з порту 1 вийняли: адреси немає — кажемо про CAP і як скинути правильно
+    monkeypatch.setattr(mndp, "discover", lambda timeout=3.0: [{**CAP_ROUTER, "ipv4": None}])
+    with pytest.raises(MikroTikError, match="режимі CAP.*щойно індикатор почне блимати"):
+        find_bench_router(log=lambda *_: None, name="nrk-001")
+
+
+def test_no_cable_does_not_take_foreign_router(monkeypatch):
+    """Без кабелю чужий роутер у Wi-Fi не чіпаємо — пояснюємо, що через Wi-Fi видно лише наш НРК."""
+    monkeypatch.setattr(netcheck, "check_router_link", lambda adapters=None: {"status": "no_adapter", "message": "немає порту"})
+    monkeypatch.setattr(mndp, "discover", lambda timeout=3.0: [CAP_ROUTER])
+    with pytest.raises(MikroTikError, match="nrk-001 через Wi-Fi не знайдено"):
+        find_bench_router(log=lambda *_: None, name="nrk-001")
+
+
+def test_wait_for_tries_every_address(monkeypatch):
+    """Після прошивки за чужою адресою роутер повертається на 192.168.88.1: ноутбук уже в його br-lan."""
+    tried = []
+
+    def fake(host, password, timeout=None):
+        tried.append(host)
+        if host != "192.168.88.1":
+            raise MikroTikError(f"{host}: timeout")
+        return host
+
+    monkeypatch.setattr(mikrotik, "MikroTik", fake)
+    monkeypatch.setattr(mikrotik.time, "sleep", lambda s: None)
+    assert mikrotik.wait_for(["192.168.68.128", "192.168.88.1"], "pw") == "192.168.88.1"
+    assert tried == ["192.168.68.128", "192.168.88.1"]

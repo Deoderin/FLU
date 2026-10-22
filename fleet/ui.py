@@ -441,10 +441,10 @@ class Handler(BaseHTTPRequestHandler):
                 ui_log(root, f"apply: {summary}")
                 return self._json(summary)
             if url.path == "/api/simple/check-router":
-                from .mndp import describe, discover
+                from .mndp import cap_mode, describe, discover
                 from .netcheck import check_router_link
                 link = check_router_link()
-                routers = [{**r, "text": describe(r)} for r in discover(3.0)]
+                routers = [{**r, "text": describe(r), "cap": cap_mode(r)} for r in discover(3.0)]
                 ui_log(root, f"check-router: {link['status']} {link['message']} | routers: {[r['text'] for r in routers]}")
                 return self._json({"link": link, "routers": routers})
             if url.path == "/api/simple/ssh":

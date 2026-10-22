@@ -131,6 +131,12 @@ def merge(entries, local: list[str] = ()) -> list[dict]:
     return sorted(out, key=lambda r: r["mac"])
 
 
+def cap_mode(router: dict) -> bool:
+    """Кнопку Reset тримали задовго (до рівного світла, не до блимання): замість заводського конфігу
+    вмикається режим CAP — усі порти в bridgeLocal, адреса від DHCP вищої мережі, 192.168.88.1 немає."""
+    return router.get("identity") == "MikroTik" and str(router.get("interface") or "").startswith("bridgeLocal")
+
+
 def describe(router: dict) -> str:
     model = router.get("board") or router.get("platform") or "MikroTik"
     parts = [model, "MAC " + ", ".join(router.get("macs") or [router["mac"]])]

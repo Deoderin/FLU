@@ -48,7 +48,7 @@ def wired_adapters() -> list[dict] | None:
 
 
 def check_router_link(adapters: list[dict] | None = None) -> dict:
-    """status: ok | no_adapter | no_cable | waiting | static | unknown, плюс зрозуміле повідомлення."""
+    """status: ok | no_adapter | no_cable | waiting | static | foreign | unknown, плюс зрозуміле повідомлення."""
     if adapters is None:
         adapters = wired_adapters()
     if adapters is None:
@@ -87,6 +87,14 @@ def check_router_link(adapters: list[dict] | None = None) -> dict:
             f"мережі для «{a['name']}» увімкніть «Отримувати IP-адресу автоматично» або додайте адресу 192.168.88.250",
             f"addresses on port \"{a['name']}\" are set manually ({listed}). The router assigns an address itself: in the "
             f"network settings of \"{a['name']}\" turn on \"Obtain an IP address automatically\" or add address 192.168.88.250")}
+    # Адресу видав хтось інший: роутер зі старим конфігом працює як світч і пропускає DHCP домашньої мережі
+    leased = [ip for a in up if a["dhcp"] for ip in a["ips"] if not ip.startswith("169.254.")]
+    if leased:
+        return {"status": "foreign", "ip": leased[0], "message": T(
+            f"кабель під'єднано, але ноутбук отримав адресу {leased[0]} не від скинутого роутера (той роздає 192.168.88.x): "
+            f"роутер не скинуто до заводських налаштувань або кабель іде не до нього",
+            f"the cable is connected, but the laptop got address {leased[0]} not from a reset router (it gives 192.168.88.x): "
+            f"the router is not reset to factory settings or the cable does not go to it")}
     return {"status": "waiting", "message": T(
         "кабель під'єднано, але роутер ще не видав адресу. Зачекайте 30 секунд після ввімкнення роутера. "
         "Якщо не допоможе — роутер не скинуто до заводських налаштувань або кабель у порту 1",

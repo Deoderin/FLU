@@ -11,3 +11,6 @@ build/
 __pycache__/
 *.egg-info/
 .pytest_cache/
+inventory/operators.yaml
+inventory/robots.yaml
+inventory/sites.yaml

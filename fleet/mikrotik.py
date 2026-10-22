@@ -33,6 +33,10 @@ class MikroTikError(Exception):
     pass
 
 
+class MikroTikAuthError(MikroTikError):
+    """Роутер відповів, але пароль не підійшов — це не «роутер не відповідає»."""
+
+
 def parse_ros_duration(text: str) -> int | None:
     """Тривалість RouterOS ('00:01:05', '1d02:03:04', '1m5s', '35s') у секундах."""
     text = text.strip()
@@ -74,6 +78,10 @@ class MikroTik:
                 host, username=user, password=password, sock=sock, timeout=timeout,
                 auth_timeout=timeout, banner_timeout=timeout, look_for_keys=False, allow_agent=False,
             )
+        except paramiko.AuthenticationException as exc:
+            self.close()
+            raise MikroTikAuthError(T(f"MikroTik {host}: пароль не підійшов ({exc})",
+                                      f"MikroTik {host}: wrong password ({exc})")) from None
         except (paramiko.SSHException, OSError, EOFError) as exc:
             self.close()
             raise MikroTikError(T(f"немає SSH до MikroTik {host}: {exc}", f"no SSH to MikroTik {host}: {exc}")) from None
@@ -209,7 +217,7 @@ def find_bench_router(log=print, timeout: float = 3.0, name: str | None = None) 
     name — ім'я НРК: уже прошитий роутер видно й без кабелю, якщо ноутбук у тому самому Starlink.
     """
     from . import netcheck
-    from .mndp import describe, discover
+    from .mndp import cap_mode, describe, discover
 
     routers = discover(timeout)
     for r in routers:
@@ -224,7 +232,7 @@ def find_bench_router(log=print, timeout: float = 3.0, name: str | None = None) 
     link = netcheck.check_router_link()
     log(T(f"  кабель: {link['message']}", f"  cable: {link['message']}"))
     link_ok = link["status"] in ("ok", "unknown")
-    if name and not link_ok:
+    if name and link["status"] in ("no_adapter", "no_cable"):
         # Без кабелю прошити можна лише наш НРК, а його в спільній мережі немає. Кажемо, що шукали
         # і чого там не видно, а не лише «немає порту» (і не «вимкніть Wi-Fi», коли роутерів там кілька)
         raise MikroTikError(T(f"{name} через Wi-Fi не знайдено. Без кабелю видно лише НРК, уже прошитий цією програмою, коли ноутбук "
@@ -237,6 +245,15 @@ def find_bench_router(log=print, timeout: float = 3.0, name: str | None = None) 
             raise MikroTikError(link["message"])
         return BENCH_HOST
     if len(routers) == 1:
+        if not routers[0]["ipv4"] and cap_mode(routers[0]):
+            raise MikroTikError(T(
+                "роутер у режимі CAP (кнопку Reset тримали задовго) і без IP-адреси. Скиньте ще раз: затисніть Reset, "
+                "увімкніть живлення й відпустіть, щойно індикатор почне блимати (≈5 с), не чекаючи рівного світла. "
+                "Або вставте в порт 1 кабель від мережі з інтернетом — роутер отримає адресу, і програма прошиє його й так",
+                "the router is in CAP mode (the Reset button was held too long) and has no IP address. Reset it again: hold "
+                "Reset, power it on and release as soon as the LED starts blinking (~5 s), without waiting for a solid light. "
+                "Or plug a cable from a network with internet into port 1 - the router gets an address and can be flashed anyway",
+            ))
         if not routers[0]["ipv4"]:
             raise MikroTikError(T(
                 "роутер знайдено, але в нього немає IP-адреси. Скиньте його до заводських налаштувань: затисніть "
@@ -244,7 +261,17 @@ def find_bench_router(log=print, timeout: float = 3.0, name: str | None = None) 
                 "the router is found but has no IP address. Reset it to factory settings: hold the Reset button, "
                 "power it on and keep holding until the LED starts blinking, then release",
             ))
-        return routers[0]["ipv4"]
+        ip = routers[0]["ipv4"]
+        # Роутер не на заводській адресі, але в мережі ноутбука: reset-configuration прошиє його й так
+        if cap_mode(routers[0]):
+            log(T(f"  роутер у режимі CAP: кнопку Reset тримали задовго (відпускати треба, щойно індикатор почне "
+                  f"блимати, а не коли світиться рівно). Прошиваю й так — за адресою {ip}",
+                  f"  the router is in CAP mode: the Reset button was held too long (release it as soon as the LED "
+                  f"starts blinking, not when it is solid). Flashing it anyway at {ip}"))
+        elif not ip.startswith("192.168.88."):
+            log(T(f"  роутер не скинуто до заводських налаштувань — прошиваю за його адресою {ip} (потрібен його поточний пароль)",
+                  f"  the router is not reset to factory settings - flashing it at its address {ip} (its current password is needed)"))
+        return ip
     if len(routers) > 1:
         raise MikroTikError(T(
             "у мережі кілька роутерів MikroTik. Вимкніть Wi-Fi на ноутбуці й лишіть під'єднаним лише роутер НРК",
@@ -275,8 +302,10 @@ def open_router(host: str, passwords: list[str]) -> MikroTik:
     for password in dict.fromkeys(passwords):
         try:
             return MikroTik(host, password)
-        except MikroTikError as exc:
+        except MikroTikAuthError as exc:
             last = exc
+        except MikroTikError as exc:
+            last = last if isinstance(last, MikroTikAuthError) else exc  # «пароль не той» важливіший за тайм-аут
     raise last or MikroTikError(T("немає пароля для входу", "no password to log in with"))
 
 
@@ -297,17 +326,21 @@ def apply_full_config(mt: MikroTik, rsc: Path) -> None:
         raise MikroTikError(T(f"{exc}\nФайли на роутері:\n{files}", f"{exc}\nFiles on the router:\n{files}")) from None
 
 
-def wait_for(host: str, password: str, timeout: float = 300) -> MikroTik:
+def wait_for(hosts: str | list[str], password: str, timeout: float = 300) -> MikroTik:
+    """Перша адреса, на якій роутер піднявся з нашим паролем (пробуємо всі по колу)."""
+    hosts = [hosts] if isinstance(hosts, str) else hosts
     deadline = time.monotonic() + timeout
     last: Exception | None = None
     while time.monotonic() < deadline:
-        try:
-            return MikroTik(host, password, timeout=5)
-        except MikroTikError as exc:
-            last = exc
-            time.sleep(5)
-    raise MikroTikError(T(f"MikroTik {host} не повернувся за {int(timeout)} с: {last}",
-                          f"MikroTik {host} did not come back within {int(timeout)} s: {last}"))
+        for host in hosts:
+            try:
+                return MikroTik(host, password, timeout=5)
+            except MikroTikError as exc:
+                last = exc
+        time.sleep(5)
+    listed = ", ".join(hosts)
+    raise MikroTikError(T(f"MikroTik {listed} не повернувся за {int(timeout)} с: {last}",
+                          f"MikroTik {listed} did not come back within {int(timeout)} s: {last}"))
 
 
 def save_baseline(robot_dir: Path, mt: MikroTik) -> Path:

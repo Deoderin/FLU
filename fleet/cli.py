@@ -106,7 +106,8 @@ def cmd_provision(args) -> int:
 
 
 def cmd_bench_mikrotik(args) -> int:
-    from .mikrotik import BENCH_HOST, MikroTikError, apply_full_config, find_bench_router, open_router, save_baseline, wait_for
+    from .mikrotik import (BENCH_HOST, MikroTikAuthError, MikroTikError, apply_full_config, find_bench_router, open_router,
+                           save_baseline, wait_for)
 
     inv, store = load()
     robot = inv.robot(args.id)
@@ -119,7 +120,17 @@ def cmd_bench_mikrotik(args) -> int:
     print(T(f"{robot.name}: заливаю {rel(rsc)} на {host} і скидаю роутер",
             f"{robot.name}: uploading {rel(rsc)} to {host} and resetting the router"))
     try:
-        mt = open_router(host, [args.password, password])
+        # введений пароль, порожній (старі роутери без пароля на наліпці) і наш, якщо роутер уже прошито
+        mt = open_router(host, [args.password, "", password])
+    except MikroTikAuthError:
+        raise MikroTikError(T(
+            f"роутер {host} відповідає, але пароль не підійшов (пробував введений, порожній і пароль НРК). Введіть пароль "
+            f"з наліпки на дні роутера — рядок «Password», не пароль Wi-Fi; великі й малі літери різняться. Перевірити "
+            f"його можна в браузері: http://{host}, користувач admin",
+            f"router {host} answers, but the password is wrong (tried the entered one, empty and the UGV password). Enter "
+            f"the password from the label on the bottom of the router - the \"Password\" line, not the Wi-Fi one; it is "
+            f"case-sensitive. You can check it in a browser: http://{host}, user admin",
+        )) from None
     except MikroTikError as exc:
         raise MikroTikError(T(
             f"роутер не відповідає. Перевірте: кабель від ноутбука в порту 5 (або ноутбук у Wi-Fi того самого Starlink, "
@@ -132,8 +143,10 @@ def cmd_bench_mikrotik(args) -> int:
     with mt:
         apply_full_config(mt, rsc)
     print(T("роутер перезавантажується, чекаю...", "the router is rebooting, waiting..."))
-    # На стенді після скидання роутер на 192.168.88.1; через Starlink — на тій самій адресі (DHCP Starlink за MAC)
-    back = BENCH_HOST if ipaddress.ip_address(host) in A.LAN else host
+    # На стенді після скидання роутер на 192.168.88.1; через Starlink — на тій самій адресі (DHCP Starlink за MAC).
+    # Роутер у режимі CAP чи зі старим конфігом прошили за чужою адресою, а ноутбук у його порту 2–5 —
+    # тоді після скидання ноутбук уже в br-lan і бачить роутер на 192.168.88.1
+    back = [BENCH_HOST] if ipaddress.ip_address(host) in A.LAN else [host, BENCH_HOST]
     with wait_for(back, password) as mt:
         got = mt.fingerprint()
         if got != fp:

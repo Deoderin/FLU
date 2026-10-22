@@ -136,12 +136,15 @@ const I18N = {
     s4_missing: "", s4_unsupported: "Це не Windows: імпортуйте конфіг пілота у WireGuard вручну.",
     s4_no_wg: "WireGuard не встановлено — запустіть setup.cmd ще раз.", s4_again: "Створити ще раз",
     s5: "Роутер", s5_hint: "Роутер скинуто до заводських налаштувань. Під'єднайте ноутбук кабелем у порт 5 роутера (1 — для Starlink, 2 і 3 — для камер, 4 — для ФК), зачекайте 30 секунд і натисніть «Перевірити підключення».",
-    s5_pwd: "Пароль роутера (якщо в WinBox входите без пароля — лишіть порожнім)", s5_btn: "Прошити роутер", s5_done: "Роутер прошито ✓",
+    s5_pwd: "Пароль роутера: новий — з наліпки на дні (рядок Password, не Wi-Fi); якщо там пароля немає — лишіть порожнім", s5_btn: "Прошити роутер", s5_done: "Роутер прошито ✓",
     s5_check: "Перевірити підключення", s5_checking: "Перевіряю кабель і шукаю роутер… (кілька секунд)", s5_found: "Знайдено роутер: {text}",
     s5_noip: "У роутера немає IP-адреси — скиньте його кнопкою Reset до заводських налаштувань.",
     s5_many: "Знайдено кілька роутерів MikroTik: вимкніть Wi-Fi на ноутбуці й лишіть під'єднаним лише роутер НРК.",
     s5_ours: "Це НРК {name}: знайдено через спільну мережу ({ip}). Можна прошити без кабелю — пароль роутера програма знає сама.",
     s5_wifi: "Уже прошитий і зібраний НРК можна перепрошити без кабелю: під'єднайте ноутбук до Wi-Fi того самого Starlink, що й НРК, і натисніть «Перевірити підключення».",
+    s5_cap: "Роутер ({ip}) у режимі CAP: кнопку Reset тримали задовго. Скидаючи, відпускайте її, щойно індикатор почне блимати (≈5 секунд); якщо тримати, доки не засвітиться рівно, вмикається режим CAP. Прошити можна й так — натисніть «Прошити роутер».",
+    s5_cap_noip: "Роутер у режимі CAP (кнопку Reset тримали задовго) і без IP-адреси. Скиньте ще раз: затисніть Reset, увімкніть живлення й відпустіть, щойно індикатор почне блимати (≈5 секунд), не чекаючи рівного світла. Або вставте в порт 1 кабель від мережі з інтернетом — роутер отримає адресу, і його можна буде прошити й так.",
+    s5_other: "Роутер ({ip}) не скинуто до заводських налаштувань: у нього свій конфіг. Прошити можна й так — введіть його поточний пароль і натисніть «Прошити роутер». Або скиньте його: тримайте Reset, доки індикатор не почне блимати, і відразу відпустіть.",
     s5_none: "Роутерів MikroTik у мережі не знайдено — ні кабелем, ні через Wi-Fi.",
     s5_not_ours: "НРК {name} через Wi-Fi не знайдено. Без кабелю видно лише НРК, уже прошитий цією програмою, коли ноутбук у Wi-Fi того самого Starlink. Новий чи скинутий роутер — тільки кабелем.",
     s5_fw: "Якщо Windows спитає дозвіл для Python у мережі — натисніть «Дозволити»: так програма бачить роутер.",
@@ -195,12 +198,15 @@ const I18N = {
     s4_missing: "", s4_unsupported: "This is not Windows: import the pilot config into WireGuard manually.",
     s4_no_wg: "WireGuard is not installed - run setup.cmd again.", s4_again: "Create again",
     s5: "Router", s5_hint: "The router is reset to factory settings. Connect the laptop with a cable to router port 5 (1 is for Starlink, 2 and 3 for the cameras, 4 for the FC), wait 30 seconds and press \"Check connection\".",
-    s5_pwd: "Router password (leave empty if WinBox lets you in without one)", s5_btn: "Flash router", s5_done: "Router flashed ✓",
+    s5_pwd: "Router password: a new one - from the label on the bottom (the Password line, not Wi-Fi); leave empty if there is none", s5_btn: "Flash router", s5_done: "Router flashed ✓",
     s5_check: "Check connection", s5_checking: "Checking the cable and looking for the router… (a few seconds)", s5_found: "Router found: {text}",
     s5_noip: "The router has no IP address - reset it to factory settings with the Reset button.",
     s5_many: "Several MikroTik routers found: turn off Wi-Fi on the laptop and keep only the UGV router connected.",
     s5_ours: "This is UGV {name}: found over the shared network ({ip}). It can be flashed without a cable - the program knows the router password.",
     s5_wifi: "An already flashed and assembled UGV can be reflashed without a cable: connect the laptop to the Wi-Fi of the same Starlink as the UGV and press \"Check connection\".",
+    s5_cap: "The router ({ip}) is in CAP mode: the Reset button was held too long. When resetting, release it as soon as the LED starts blinking (~5 seconds); holding it until the LED is solid turns on CAP mode. It can be flashed anyway - press \"Flash router\".",
+    s5_cap_noip: "The router is in CAP mode (the Reset button was held too long) and has no IP address. Reset it again: hold Reset, power it on and release as soon as the LED starts blinking (~5 seconds), without waiting for a solid light. Or plug a cable from a network with internet into port 1 - the router gets an address and can be flashed anyway.",
+    s5_other: "The router ({ip}) is not reset to factory settings: it has its own config. It can be flashed anyway - enter its current password and press \"Flash router\". Or reset it: hold Reset until the LED starts blinking and release right away.",
     s5_none: "No MikroTik routers found on the network - neither by cable nor over Wi-Fi.",
     s5_not_ours: "UGV {name} was not found over Wi-Fi. Without a cable only a UGV already flashed by this program is visible, when the laptop is on the Wi-Fi of the same Starlink. A new or reset router needs a cable.",
     s5_fw: "If Windows asks to allow Python on the network, press Allow: that is how the program sees the router.",
@@ -513,20 +519,25 @@ function render() {
       try {
         const res = await api("/api/simple/check-router", {});
         const linkOk = ["ok", "unknown"].includes(res.link.status);
+        const cable = !["no_adapter", "no_cable"].includes(res.link.status);
         // Прошитий НРК зветься своїм ім'ям: його видно й через спільну мережу (Starlink чи Wi-Fi), без кабелю
         const ours = robot && res.routers.find((r) => r.identity === robot.name && r.ipv4 && !r.ipv4.startsWith("192.168.88."));
-        // Тоді про кабель не пишемо: він не потрібен
-        const lines = [...(ours ? [] : [res.link.message]), ...res.routers.map((r) => t("s5_found", { text: r.text }))];
+        // Єдиний роутер у кабелі, але не на заводській адресі (режим CAP чи старий конфіг): прошивається за його адресою
+        const single = res.routers.length === 1 ? res.routers[0] : null;
+        const other = !ours && cable && single && single.ipv4 && !single.ipv4.startsWith("192.168.88.") ? single : null;
+        // Тоді про кабель не пишемо: він не потрібен або вже пояснено нижче
+        const lines = [...(ours || other ? [] : [res.link.message]), ...res.routers.map((r) => t("s5_found", { text: r.text }))];
         const many = !ours && res.routers.length > 1 && !res.routers.some((r) => r.ipv4 === "192.168.88.1");
         const noip = res.routers.length === 1 && !res.routers[0].ipv4;
         if (ours) lines.push(t("s5_ours", { name: robot.name, ip: ours.ipv4 }));
+        if (other) lines.push(t(other.cap ? "s5_cap" : "s5_other", { ip: other.ipv4 }));
         if (many) lines.push(t("s5_many"));
-        if (noip) lines.push(t("s5_noip"));
+        if (noip) lines.push(t(single.cap ? "s5_cap_noip" : "s5_noip"));
         if (!res.routers.length) lines.push(t("s5_none"));
         // Без кабелю пошук ішов через Wi-Fi: кажемо, чого там не видно, а не лише «немає порту»
-        if (robot && !ours && !linkOk) lines.push(t("s5_not_ours", { name: robot.name }));
+        if (robot && !ours && !cable) lines.push(t("s5_not_ours", { name: robot.name }));
         if (!res.routers.length) lines.push(t("s5_fw"));
-        routerFound = [lines, ours ? "ok" : !linkOk || noip ? "bad" : many ? "warn" : "ok"];
+        routerFound = [lines, ours ? "ok" : other ? "warn" : !linkOk || noip ? "bad" : many ? "warn" : "ok"];
       } catch (e) { routerFound = [[e.message], "bad"]; }
       render();
     })),
