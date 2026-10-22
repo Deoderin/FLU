@@ -19,15 +19,15 @@
 
 sites:
   # Наш сервер. Заповнюється сам після вставки відповіді сервера в програмі.
-  main:
-    kind: hub
-    customer: FLU
-    host: 13.50.196.138             # приклад; програма замінить справжньою адресою
-    endpoint: 13.50.196.138:51820   # куди підключаються НРК і пілоти (UDP)
-    network:
-      tunnel: 10.150.0.0/24
-      operators: 10.150.1.0/24
-      robot_lans: 10.150.16.0/20
+#  main:
+#    kind: hub
+#    customer: FLU
+#    host: 13.50.196.138             # приклад; програма замінить справжньою адресою
+#    endpoint: 13.50.196.138:51820   # куди підключаються НРК і пілоти (UDP)
+#    network:
+#      tunnel: 10.150.0.0/24
+#      operators: 10.150.1.0/24
+#      robot_lans: 10.150.16.0/20
 
 # Приклади інших сценаріїв: розкоментуйте й підставте свої дані.
 #
@@ -64,4 +64,4 @@ sites:
 #   network: 10.99.0.0/16           # .0.1 — сервер, інженер з id K — .0.(1 + K), НРК — за глобальним id
 #   engineers:
 #     - {name: engineer1, id: 1}
-    server_pubkey: rXpsMwtpJjl1ZzD6oa6C91k+iqrr3JpUQZNJnd7/dU8=
+#    server_pubkey: rXpsMwtpJjl1ZzD6oa6C91k+iqrr3JpUQZNJnd7/dU8=
