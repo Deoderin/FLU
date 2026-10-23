@@ -153,7 +153,8 @@ else {
   $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($Lnk)
   $shortcut.TargetPath = Join-Path $Root 'fleet-ui.cmd'
   $shortcut.WorkingDirectory = $Root
-  $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,13"
+  $shortcut.IconLocation = Join-Path $Root 'packaging\app.ico'
+  $shortcut.WindowStyle = 7  # fleet-ui.cmd лише згорнуто мигне, далі відкривається вікно майстра
   $shortcut.Save()
   Remove-Item -Force -ErrorAction SilentlyContinue $OldLnk
   Ok $Lnk
@@ -164,5 +165,5 @@ Step 5 'Майстер першого налаштування'
 if ($NoLaunch -or $DryRun) { Info 'відкрийте ярлик «UGV Quick Setup» або fleet-ui.cmd' }
 else {
   Start-Process -FilePath (Join-Path $Root 'fleet-ui.cmd') -WorkingDirectory $Root
-  Ok 'відкриваю http://127.0.0.1:8765 — далі: адреса сервера, ім''я пілота, номер НРК'
+  Ok 'відкриваю вікно майстра — далі: адреса сервера, ім''я пілота, номер НРК'
 }

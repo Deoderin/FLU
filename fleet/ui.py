@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import APP_NAME, __version__
+from . import APP_NAME, NO_WINDOW, __version__
 from . import addressing as A
 from .i18n import LANGS, T, get_lang, set_lang
 from .inventory import Inventory, InventoryError
@@ -36,6 +36,20 @@ from .termite import TermiteError
 
 PAGES = {"/": Path(__file__).with_name("simple.html"), "/advanced": Path(__file__).with_name("ui.html")}
 PKG_PARENT = Path(__file__).resolve().parents[1]
+
+
+def fleet_command() -> list[str]:
+    """Як запустити команду fleet окремим процесом (прошивка, тест), щоб забрати її вивід.
+
+    Зібрана програма: консольний fleet.exe поруч із «UGV Quick Setup.exe». З .venv: python -m fleet;
+    якщо вікно запущено через pythonw (без консолі), дочірній процес — звичайний python.exe поруч.
+    """
+    if getattr(sys, "frozen", False):
+        return [str(Path(sys.executable).with_name("fleet.exe"))]
+    exe = Path(sys.executable)
+    if exe.stem.lower() == "pythonw" and exe.with_name("python.exe").exists():
+        exe = exe.with_name("python.exe")
+    return [str(exe), "-m", "fleet"]
 COMMANDS = {"check", "render", "provision", "bench", "fc", "deploy-server", "kit", "move", "test", "wg-install"}
 HOST_RE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -83,8 +97,9 @@ class Job:
         env = {**os.environ, "FLEET_ROOT": str(root), "FLEET_LANG": lang,
                "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
         self.proc = subprocess.Popen(
-            [sys.executable, "-m", "fleet", *args], cwd=PKG_PARENT, env=env, stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+            [*fleet_command(), *args], cwd=root if getattr(sys, "frozen", False) else PKG_PARENT, env=env,
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+            errors="replace", creationflags=NO_WINDOW,  # без чорного вікна консолі
         )
         threading.Thread(target=self._pump, daemon=True).start()
 

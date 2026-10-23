@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from . import NO_WINDOW
 from .i18n import T
 
 WG_EXE = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "WireGuard" / "wireguard.exe"
@@ -49,7 +50,8 @@ def tunnel_status(name: str) -> str:
     """running | stopped | missing | unsupported (не Windows)."""
     if os.name != "nt":
         return "unsupported"
-    r = subprocess.run(["sc.exe", "query", f"WireGuardTunnel${name}"], capture_output=True, text=True, errors="replace")
+    r = subprocess.run(["sc.exe", "query", f"WireGuardTunnel${name}"], capture_output=True, text=True, errors="replace",
+                       creationflags=NO_WINDOW)  # майстер питає це кожні кілька секунд
     if r.returncode != 0:
         return "missing"
     return "running" if "RUNNING" in r.stdout else "stopped"
@@ -128,8 +130,8 @@ def install_pilot_tunnel(root: Path, site: str, pilot: str, dry_run: bool = Fals
           f"Windows will ask for administrator permission for WireGuard - press Yes (tunnel {name})"))
     r = subprocess.run([
         "powershell", "-NoProfile", "-Command",
-        f"Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"{ps_quote(ps1)}\"'",
-    ], capture_output=True, text=True, errors="replace")
+        f"Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"{ps_quote(ps1)}\"'",
+    ], capture_output=True, text=True, errors="replace", creationflags=NO_WINDOW)
     if r.returncode != 0:
         raise TunnelError(T("дозвіл адміністратора не надано — тунель не встановлено",
                             "administrator permission was not granted - the tunnel is not installed"))

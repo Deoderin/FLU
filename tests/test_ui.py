@@ -283,3 +283,30 @@ def test_termite_needs_registered_ugv(simple_ui):
     call(simple_ui, "/api/simple/prepare", {"pilot": "ivan", "serial": "FLU-2026-0001"})
     status, body = call(simple_ui, "/api/simple/termite", {"id": 1})
     assert status == 400 and "спершу зареєструйте" in json.loads(body)["error"]
+
+
+def test_fleet_command_for_jobs(monkeypatch, tmp_path):
+    """Прошивку й тести вікно запускає окремим процесом: з .venv — python -m fleet, у зібраній програмі — fleet.exe."""
+    import sys
+
+    from fleet import ui
+
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    pythonw = tmp_path / "pythonw.exe"
+    (tmp_path / "python.exe").write_bytes(b"")
+    monkeypatch.setattr(sys, "executable", str(pythonw))
+    assert ui.fleet_command() == [str(tmp_path / "python.exe"), "-m", "fleet"]  # pythonw без консолі — вивід не забрати
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "UGV Quick Setup.exe"))
+    assert ui.fleet_command() == [str(tmp_path / "fleet.exe")]
+
+
+def test_frozen_app_keeps_data_next_to_exe(monkeypatch, tmp_path):
+    import sys
+
+    import fleet
+
+    monkeypatch.delenv("FLEET_ROOT", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "UGV Quick Setup.exe"))
+    assert fleet._root() == tmp_path.resolve()

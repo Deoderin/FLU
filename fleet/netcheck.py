@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 
+from . import NO_WINDOW
 from .i18n import T
 
 ROUTER_NET = ipaddress.ip_network("192.168.88.0/24")
@@ -35,7 +36,8 @@ def wired_adapters() -> list[dict] | None:
         return None
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-Command", PS_ADAPTERS],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+                           creationflags=NO_WINDOW)
         data = json.loads(r.stdout or "[]")
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         return None

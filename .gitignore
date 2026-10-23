@@ -6,6 +6,8 @@ inventory/
 
 # Зібрані конфіги та звіти: перезбираються командою fleet render
 build/
+# Зібрана програма (build-exe.cmd)
+dist/
 
 .venv/
 __pycache__/

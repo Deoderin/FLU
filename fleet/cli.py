@@ -347,6 +347,12 @@ def cmd_ui(args) -> int:
     return serve(Path(args.root).resolve() if args.root else ROOT, port=args.port, open_browser=not args.no_browser)
 
 
+def cmd_app(args) -> int:
+    from .app import run_app
+
+    return run_app(Path(args.root).resolve() if args.root else ROOT, port=args.port)
+
+
 def cmd_test(args) -> int:
     from .acceptance import Acceptance, save_report
 
@@ -479,13 +485,20 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-browser", action="store_true", help=T("не відкривати браузер", "do not open a browser"))
     s.add_argument("--root", help=T("інша копія репозиторію (типово ця)", "another copy of the repository (default this one)"))
     s.set_defaults(fn=cmd_ui)
+    s = sub.add_parser("app", help=T("майстер у власному вікні, без браузера", "the wizard in its own window, no browser"))
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--root", help=T("інша копія репозиторію (типово ця)", "another copy of the repository (default this one)"))
+    s.set_defaults(fn=cmd_app)
     return p
 
 
 def main(argv: list[str] | None = None) -> None:
+    # Вікно майстра просить UTF-8 через PYTHONIOENCODING, але зібраний fleet.exe (PyInstaller) цю змінну
+    # ігнорує й писав би в cp1251 — тож враховуємо її самі
+    encoding = os.environ.get("PYTHONIOENCODING", "").split(":")[0] or None
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(errors="replace", line_buffering=True)
+            stream.reconfigure(errors="replace", line_buffering=True, **({"encoding": encoding} if encoding else {}))
     argv = sys.argv[1:] if argv is None else argv
     # Мову треба знати ще до побудови парсера: від неї залежать тексти довідки
     pre = argparse.ArgumentParser(add_help=False)

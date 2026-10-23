@@ -18,6 +18,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from . import NO_WINDOW
 from .i18n import T
 
 SETTINGS_DIR = "tencore.org"
@@ -65,7 +66,7 @@ def find_installs() -> dict:
         return {"paths": [], "running": False}
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-Command", PS_FIND], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=30)
+                           encoding="utf-8", errors="replace", timeout=30, creationflags=NO_WINDOW)
         data = json.loads(r.stdout or "{}")
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         return {"paths": [], "running": False}
