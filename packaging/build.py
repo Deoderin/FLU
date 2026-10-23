@@ -10,7 +10,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +21,7 @@ from make_icon import make_icon  # noqa: E402
 
 DIST = ROOT / "dist"
 DATA_DIRS = ["base", "templates", "server", "inventory.example"]
-DATA_FILES = ["README.md"]
+DATA_FILES = ["README.md", "CHANGELOG.md"]
 NEVER = {"inventory", "secrets", "build"}  # свої дані ноутбука в збірку не кладемо
 FIRST_RUN = """UGV Quick Setup {version}
 
@@ -54,7 +53,8 @@ def main() -> int:
     if leaked:
         print(f"помилка: у збірку потрапили {leaked}", file=sys.stderr)
         return 1
-    archive = shutil.make_archive(str(DIST / f"UGV-Quick-Setup-{__version__}-{time.strftime('%Y%m%d')}"), "zip", DIST, APP_NAME)
+    # Назва архіву = версія: саме його прикріплюють до релізу v{версія} на GitHub (docs/release.md)
+    archive = shutil.make_archive(str(DIST / f"UGV-Quick-Setup-{__version__}"), "zip", DIST, APP_NAME)
     print(f"готово: {out}\n        {archive}")
     return 0
 

@@ -97,6 +97,7 @@ add chain=forward action=accept in-interface-list=fleet-sites src-address-list=f
 {% for n in lan.extra %}
 add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ n.net }} protocol=icmp comment="fleet: ping devices {{ n.net }}"
 {% endfor %}
+add chain=forward action=accept in-interface-list=fleet-lan out-interface-list=fleet-sites src-address={{ lan.fc }} protocol=udp comment="fleet: fc telemetry over udp to the pilot (via the site server)"
 add chain=forward action=accept in-interface-list=fleet-lan out-interface-list=fleet-lan comment="fleet: LAN routing (bench)"
 add chain=forward action=drop comment="fleet: drop - cameras and FC have no internet"
 

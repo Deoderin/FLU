@@ -19,6 +19,12 @@
 /ip firewall nat add chain=dstnat in-interface={{ s.iface }} dst-address={{ n.outside }} action=dst-nat to-addresses={{ n.inside }} comment="{{ s.tag }}"
 {% endfor %}
 /ip firewall nat add chain=dstnat in-interface={{ s.iface }} dst-address={{ s.lan_block }} action=netmap to-addresses={{ s.lan_mapped }} comment="{{ s.tag }}"
+{% if s.fc_relay %}
+# FC adapter that pushes MAVLink over UDP to a fixed address (e.g. the old ground station): send it to the site
+# server, which passes it to the pilot who owns this UGV; the pilot's replies (control) come back the same way
+/ip firewall nat add chain=dstnat in-interface=br-lan src-address={{ s.fc_inside }} protocol=udp dst-address-type=!local dst-port=!67-68 action=dst-nat to-addresses={{ s.server_ip }} comment="{{ s.tag }}"
+/ip firewall nat add chain=srcnat src-address={{ s.fc_inside }} out-interface={{ s.iface }} action=src-nat to-addresses={{ s.fc_outside }} comment="{{ s.tag }}"
+{% endif %}
 {% for src in s.sources %}
 /ip firewall address-list add list=fleet-sources address={{ src }} comment="{{ s.tag }}"
 {% endfor %}

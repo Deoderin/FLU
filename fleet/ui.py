@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import APP_NAME, NO_WINDOW, __version__
+from . import APP_NAME, NO_WINDOW, __version__, feature
 from . import addressing as A
 from .i18n import LANGS, T, get_lang, set_lang
 from .inventory import Inventory, InventoryError
@@ -237,6 +237,7 @@ def simple_state(root: Path) -> dict:
         "tunnels": {p: {"name": tunnel_name(site.name, p), "status": tunnel_status(tunnel_name(site.name, p))} for p in local},
         "wireguard": wireguard_installed(),
         "errors": inv.validate(),
+        "features": {"give": feature("give")},  # ще не перевірене в полі — у зібраній програмі сховано
     }
 
 

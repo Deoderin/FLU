@@ -117,6 +117,11 @@ def test_round_trip(fresh, tmp_path):
     assert 'dst-address=192.168.88.108 comment="fleet: front camera' in rsc  # передня і задня камери
     assert 'dst-address=192.168.88.109 comment="fleet: rear camera' in rsc
     assert "mtu=1280" in rsc and "MTU = 1280" in pilot_conf
+    # UDP, який адаптер ФК шле сам (на старий наземний ноутбук), — на сервер, той віддасть пілоту-власнику
+    assert ("chain=dstnat in-interface=br-lan src-address=192.168.88.2 protocol=udp dst-address-type=!local "
+            "dst-port=!67-68 action=dst-nat to-addresses=10.150.0.1") in rsc
+    assert "chain=srcnat src-address=192.168.88.2 out-interface=wg-main action=src-nat to-addresses=10.150.16.2" in rsc
+    assert "out-interface-list=fleet-sites src-address=192.168.88.2 protocol=udp" in rsc  # файрвол роутера випускає
     streams = Renderer(inv, SecretStore(fresh)).camera_streams(inv.robot(1))
     assert [(c["cam"], c["ip"]) for c in streams] == [("cam1", "10.150.16.8"), ("cam2", "10.150.16.9")]
     assert streams[0]["rtsp"] == "rtsp://admin:a12345677@10.150.16.8:554/cam/realmonitor?channel=1&subtype=0"
@@ -237,6 +242,29 @@ def test_give_and_remove_by_name(fresh, other, tmp_path):
         hub.admin_command(fresh, "remove-robot", serial="ПФ-01")
 
 
+def tel_rules(server) -> list[str]:
+    return [line for line in (server.dir / "flu-acl.sh").read_text().splitlines() if "-A flu-tel" in line]
+
+
+@needs_bash
+def test_fc_telemetry_goes_to_owner(fresh, other, tmp_path):
+    """Адаптер ФК сам шле телеметрію по UDP: роутер — на сервер, сервер — пілоту-власнику, і після передачі теж."""
+    server = FakeServer(tmp_path)
+    server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    assert tel_rules(server) == [
+        "iptables -t nat -A flu-tel -s 10.150.16.0/28 -d 10.150.0.1 -p udp -j DNAT --to-destination 10.150.1.10  # UGV FLU-2026-0001 -> ivan",
+        "iptables -A flu-tel -s 10.150.16.0/28 -d 10.150.1.10/32 -p udp -j ACCEPT  # UGV FLU-2026-0001 -> ivan",
+    ]
+    acl = (server.dir / "flu-acl.sh").read_text()
+    assert "iptables -t nat -I PREROUTING -i flu -j flu-tel" in acl and "-i flu -o flu -j flu-tel" in acl
+    assert "iptables -t nat -X flu-tel" in (server.dir / "flu.conf").read_text()  # прибирається під час down
+
+    server.run(prepare(other, "petro", None)["command"])
+    server.run(hub.admin_command(other, "give", serial="FLU-2026-0001", pilot="petro"))
+    assert all(line.endswith("# UGV FLU-2026-0001 -> petro") and "10.150.1.11" in line for line in tel_rules(server))
+
+
+
 def test_server_command_fits_console(fresh):
     """Без коментарів скрипт стискається в команду, яку приймає будь-яка консоль (до ~8 тис. символів)."""
     cmd = prepare(fresh, "pilot-with-long-name", "SERIAL-WITH-A-LONG-NAME-0001")["command"]
@@ -270,3 +298,24 @@ def test_server_routes_only_networks(tmp_path):
         "ip -4 route replace 10.150.16.0/28 dev flu",
         "ip -4 route del 10.150.16.48/28 dev flu",  # мережа видаленого НРК
     ]
+
+
+@needs_bash
+def test_give_is_off_in_the_built_app(fresh, other, tmp_path, monkeypatch):
+    """Передачу ще не перевірено: у зібраній програмі її немає ні в картці 7, ні через повторне додавання НРК."""
+    import sys
+
+    server = FakeServer(tmp_path)
+    server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    server.run(prepare(fresh, "petro", None)["command"])
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.delenv("FLEET_EXPERIMENTAL", raising=False)
+    with pytest.raises(HubError, match="передача НРК у цій версії програми вимкнена"):
+        hub.admin_command(fresh, "give", serial="FLU-2026-0001", pilot="petro")
+    db = (server.dir / "flu-peers.tsv").read_text()
+    out = server.run(prepare(fresh, "petro", "FLU-2026-0001")["command"], ok=False)  # той самий НРК, інший пілот
+    assert "уже належить пілоту ivan, а передача НРК у цій версії програми вимкнена" in out
+    assert (server.dir / "flu-peers.tsv").read_text() == db  # нічого не змінилось
+    server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])  # свій НРК своєму пілоту — як і раніше
+    monkeypatch.setenv("FLEET_EXPERIMENTAL", "1")  # увімкнути, щоб перевірити в зібраній
+    assert "--give" in hub.admin_command(fresh, "give", serial="FLU-2026-0001", pilot="petro")

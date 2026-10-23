@@ -310,3 +310,12 @@ def test_frozen_app_keeps_data_next_to_exe(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "UGV Quick Setup.exe"))
     assert fleet._root() == tmp_path.resolve()
+
+
+def test_give_hidden_in_the_built_app(simple_ui, monkeypatch):
+    import sys
+
+    assert json.loads(call(simple_ui, "/api/simple")[1])["features"] == {"give": True}  # з репозиторію — є
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.delenv("FLEET_EXPERIMENTAL", raising=False)
+    assert json.loads(call(simple_ui, "/api/simple")[1])["features"] == {"give": False}

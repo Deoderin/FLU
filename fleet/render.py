@@ -117,6 +117,11 @@ class Renderer:
             "lan_mapped": str(A.LAN_MAPPED),
             "dstnat": [{"outside": str(A.mapped_ip(site, slot, h)), "inside": str(A.device_ip(robot, h))}
                        for h in A.device_dstnat(robot)],
+            # hub: UDP, який адаптер ФК шле сам, — на сервер, а той віддає пілоту-власнику (flu-hub.sh, flu-tel)
+            "fc_relay": site.hub,
+            "fc_inside": str(A.device_ip(robot, "fc")),
+            "fc_outside": str(A.mapped_ip(site, slot, "fc")),
+            "server_ip": str(A.server_ip(site)),
             "sources": site.sources(),
             "mgmt": site.mgmt_sources(),
         }

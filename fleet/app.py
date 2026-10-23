@@ -13,7 +13,7 @@ import threading
 import webbrowser
 from pathlib import Path
 
-from . import APP_NAME, NO_WINDOW, ROOT
+from . import APP_NAME, NO_WINDOW, ROOT, __version__
 from .i18n import T
 from .ui import UiServer, ui_running
 
@@ -71,7 +71,7 @@ def run_app(root: Path = ROOT, port: int = 8765) -> int:
             import webview
         except ImportError:
             return _browser_fallback(url, server)
-        webview.create_window(APP_NAME, url, **WINDOW)
+        webview.create_window(f"{APP_NAME} {__version__}", url, **WINDOW)  # версія в заголовку: стару копію видно одразу
         try:
             data_dir().mkdir(parents=True, exist_ok=True)
             # private_mode=False: майстер пам'ятає вибраний НРК і мову між запусками

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flu-fleet"
-version = "0.1.0"
+dynamic = ["version"]  # з fleet/__init__.py: __version__
 description = "Конвеєр прошивки та обслуговування НРК FLU"
 # <3.15: під 3.15 ще немає готових збірок pymavlink і PyYAML для Windows
 requires-python = ">=3.11,<3.15"
@@ -26,6 +26,9 @@ build = ["pyinstaller>=6.20,<7"]  # build-exe.cmd: окрема програма
 
 [project.scripts]
 fleet = "fleet.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "fleet.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["fleet*"]

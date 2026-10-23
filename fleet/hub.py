@@ -19,6 +19,7 @@ from pathlib import Path
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from . import addressing as A
+from . import feature
 from .i18n import T
 from .inventory import NAME_RE, Inventory, InventoryError, _yaml, is_wg_key
 from .keystore import SecretStore, wg_pubkey
@@ -148,6 +149,8 @@ def command(root: Path, pilot: str, robot_id: int | None = None) -> str:
     if robot_id is not None:
         robot = Inventory.load(root).robot(robot_id)
         args += [robot.serial, wg_pubkey(store.robot(robot_id)["wg_site"])]
+    if not feature("give"):  # передачу ще не перевірено: НРК іншого пілота сервер не віддасть
+        args.insert(0, "--no-give")
     return server_command(root, args)
 
 
@@ -157,6 +160,8 @@ def admin_command(root: Path, action: str, serial: str | None = None, pilot: str
     give — передати НРК пілоту; remove-pilot — видалити пілота; remove-robot — видалити НРК і звільнити слот.
     """
     if action == "give":
+        if not feature("give"):
+            raise HubError(T("передача НРК у цій версії програми вимкнена", "giving a UGV is turned off in this version"))
         check_serial(serial)
         check_pilot(pilot)
         return server_command(root, ["--give", serial, pilot])
