@@ -17,7 +17,7 @@
 /system identity set name="{{ robot.name }}"
 /user set [find name=admin] password="{{ mikrotik_password }}"
 
-# --- UGV LAN: identical on every UGV ---
+# --- UGV LAN: the router is 192.168.88.1 on every UGV, devices keep the addresses found at flashing ---
 /interface bridge add name=br-lan comment="fleet"
 /interface bridge port
 add bridge=br-lan interface={{ platform.ports.fc }} comment="fleet: fc"
@@ -25,9 +25,19 @@ add bridge=br-lan interface={{ platform.ports.cam1 }} comment="fleet: cam1"
 add bridge=br-lan interface={{ platform.ports.cam2 }} comment="fleet: cam2"
 add bridge=br-lan interface={{ platform.ports.bench }} comment="fleet: bench"
 /ip address add address={{ lan.router }}/24 interface=br-lan comment="fleet"
+{% for n in lan.extra %}
+# Devices found at flashing time in {{ n.net }}: the router joins their network, the devices stay as they are
+/ip address add address={{ n.router }}/{{ n.prefix }} interface=br-lan comment="fleet: devices {{ n.net }}"
+{% endfor %}
 /ip pool add name=fleet-lan ranges=192.168.88.200-192.168.88.249
 /ip dhcp-server add name=fleet-lan interface=br-lan address-pool=fleet-lan disabled=no
 /ip dhcp-server network add address={{ lan.net }} gateway={{ lan.router }} comment="fleet"
+{% for n in lan.extra %}
+/ip dhcp-server network add address={{ n.net }} gateway={{ n.router }} comment="fleet: devices {{ n.net }}"
+{% endfor %}
+{% for d in lan.leases %}
+/ip dhcp-server lease add server=fleet-lan mac-address={{ d.mac }} address={{ d.ip }} comment="fleet: {{ d.host }}"
+{% endfor %}
 /interface list add name=fleet-lan
 /interface list add name=fleet-sites
 /interface list member add list=fleet-lan interface=br-lan
@@ -78,14 +88,23 @@ add chain=input action=accept in-interface={{ svc.iface }} protocol=tcp dst-port
 add chain=input action=drop comment="fleet: drop"
 add chain=forward action=accept connection-state=established,related,untracked comment="fleet"
 add chain=forward action=drop connection-state=invalid comment="fleet"
-add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.fc }} protocol=tcp dst-port={{ mav_port }} comment="fleet: mavlink"
-add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.cam1 }}-{{ lan.cam2 }} protocol=tcp dst-port=554 comment="fleet: rtsp"
+# Pilots reach only their own UGV (the server ACL), so to the devices everything is allowed:
+# MAVLink over TCP or UDP, RTSP and RTP over UDP (the player opens the UDP ports itself)
+add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.fc }} comment="fleet: fc (mavlink {{ mav_port }})"
+add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.cam1 }} comment="fleet: front camera (rtsp, rtp)"
+add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.cam2 }} comment="fleet: rear camera (rtsp, rtp)"
 add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ lan.net }} protocol=icmp comment="fleet: ping devices (diagnostics)"
+{% for n in lan.extra %}
+add chain=forward action=accept in-interface-list=fleet-sites src-address-list=fleet-sources dst-address={{ n.net }} protocol=icmp comment="fleet: ping devices {{ n.net }}"
+{% endfor %}
 add chain=forward action=accept in-interface-list=fleet-lan out-interface-list=fleet-lan comment="fleet: LAN routing (bench)"
 add chain=forward action=drop comment="fleet: drop - cameras and FC have no internet"
 
 # Devices answer the router, not the pilot: a camera or FC adapter set up without a gateway still works
 /ip firewall nat add chain=srcnat action=masquerade out-interface=br-lan src-address-list=fleet-sources comment="fleet: devices answer the router"
+# Camera RTP over UDP comes in ~1400-byte packets marked "don't fragment" and does not fit the 1280 tunnel:
+# let the router fragment them instead of dropping (TCP adapts by itself)
+/ip firewall mangle add chain=forward action=clear-df protocol=udp out-interface-list=fleet-sites comment="fleet: udp video over the tunnel"
 
 # --- Services and hardening ---
 /ip service

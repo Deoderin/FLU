@@ -90,8 +90,12 @@ class Renderer:
     # --- НРК -----------------------------------------------------------------
 
     @staticmethod
-    def lan_ctx() -> dict:
-        return {"net": str(A.LAN), "mapped": str(A.LAN_MAPPED), **{h: str(A.lan_ip(h)) for h in A.HOSTS}}
+    def lan_ctx(robot: Robot) -> dict:
+        """Мережа НРК: роутер і DHCP — 192.168.88.x, пристрої — на адресах, знайдених під час прошивки."""
+        return {"net": str(A.LAN), "mapped": str(A.LAN_MAPPED), "router": str(A.lan_ip("router")),
+                **{h: str(A.device_ip(robot, h)) for h in A.DEVICES}, "extra": A.device_nets(robot),
+                # Закріплені адреси: пристрій, що бере адресу по DHCP, після перезавантаження отримає ту саму
+                "leases": [{"host": h, **d} for h, d in robot.devices.items() if d.get("mac")]}
 
     def site_ctx(self, robot: Robot, site: Site, slot: int, pending: bool = False) -> dict:
         tag = f"fleet-site:{site.name}" + (" pending" if pending else "")
@@ -111,7 +115,8 @@ class Renderer:
             "prefix": site.network.tunnel.prefixlen,
             "lan_block": str(A.lan_block(site, slot)),
             "lan_mapped": str(A.LAN_MAPPED),
-            "dstnat": [{"outside": str(A.mapped_ip(site, slot, h)), "inside": str(A.lan_ip(h))} for h in A.dstnat_hosts()],
+            "dstnat": [{"outside": str(A.mapped_ip(site, slot, h)), "inside": str(A.device_ip(robot, h))}
+                       for h in A.device_dstnat(robot)],
             "sources": site.sources(),
             "mgmt": site.mgmt_sources(),
         }
@@ -147,7 +152,7 @@ class Renderer:
             "robot": robot,
             "platform": plat,
             "slot": slot,
-            "lan": self.lan_ctx(),
+            "lan": self.lan_ctx(robot),
             "mikrotik_password": self.store.robot(robot.id)["mikrotik_password"],
             "mav_port": plat["fc"]["mavlink_port"],
             "site": self.site_ctx(robot, site, slot),
@@ -164,7 +169,7 @@ class Renderer:
             slot=slot,
             fc=plat["fc"],
             failsafe=plat["failsafe"],
-            lan=self.lan_ctx(),
+            lan=self.lan_ctx(robot),
         )
         return text, parse_parm(text)
 
@@ -231,7 +236,7 @@ class Renderer:
                 "mav_port": plat["fc"]["mavlink_port"],
                 "rtsp_user": plat["cameras"]["rtsp_user"],
                 "rtsp_path": plat["cameras"]["rtsp_path"],
-                "camera_password": sec["camera_password"],
+                "camera_password": plat["cameras"].get("rtsp_password") or sec["camera_password"],
                 "hold_mode": plat["modes"]["hold"],
             })
         return rows
@@ -405,15 +410,20 @@ class Renderer:
         if not robot.provisioned:
             return []
         site = self.inv.site(robot.site)
-        path = self.inv.platform(robot)["cameras"]["rtsp_path"]
+        cfg = self.inv.platform(robot)["cameras"]
+        # Пароль камер однаковий на всіх НРК (камери не перепрошуються): QGroundControl бере його з посилання
+        auth = f"{cfg.get('rtsp_user', 'admin')}:{cfg['rtsp_password']}@" if cfg.get("rtsp_password") else ""
+        main, second = cfg["rtsp_path"], cfg.get("rtsp_path_secondary") or cfg["rtsp_path"]
         streams = []
         for cam in A.CAMERAS:
             if site.hub:
                 ip = str(A.mapped_ip(site, robot.slot, cam))
-                streams.append({"cam": cam, "ip": ip, "rtsp": f"rtsp://{ip}:554{path}"})
+                base = f"rtsp://{auth}{ip}:554"
+                streams.append({"cam": cam, "ip": ip, "rtsp": base + main, "rtsp2": base + second})
             elif site.managed:
                 ip = str(A.server_ip(site))
-                streams.append({"cam": cam, "ip": ip, "rtsp": f"rtsp://{ip}:{A.RTSP_PORT}/{robot.name}-{cam}"})
+                url = f"rtsp://{ip}:{A.RTSP_PORT}/{robot.name}-{cam}"
+                streams.append({"cam": cam, "ip": ip, "rtsp": url, "rtsp2": url})
         return streams
 
     # --- сервісний тунель ----------------------------------------------------

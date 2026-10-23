@@ -12,7 +12,7 @@ from ipaddress import IPv4Address, IPv4Network
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .inventory import Engineer, Operator, Service, Site
+    from .inventory import Engineer, Operator, Robot, Service, Site
 
 LAN = ipaddress.ip_network("192.168.88.0/24")
 LAN_MAPPED = ipaddress.ip_network("192.168.88.0/28")
@@ -53,6 +53,34 @@ def mapped_ip(site: Site, slot: int, host: str) -> IPv4Address:
 def dstnat_hosts() -> list[str]:
     """Пристрої поза 192.168.88.0/28: netmap до них не веде, потрібен окремий dst-nat."""
     return [h for h in HOSTS if lan_ip(h) not in LAN_MAPPED]
+
+
+DEVICES = ("fc", "cam1", "cam2")  # пристрої в портах MikroTik; адреси знаходить прошивка
+
+
+def device_ip(robot: Robot, host: str) -> IPv4Address:
+    """Адреса пристрою на борту: знайдена під час прошивки (robot.devices) або стандартна 192.168.88.x."""
+    found = robot.devices.get(host, {}).get("ip")
+    return ipaddress.ip_address(found) if found else lan_ip(host)
+
+
+def device_dstnat(robot: Robot) -> list[str]:
+    """Пристрої, до яких netmap блоку /28 не веде: стандартні камери (.108/.109) і все, що стоїть не на своїй адресі."""
+    return [h for h in DEVICES if device_ip(robot, h) != lan_ip(h) or lan_ip(h) not in LAN_MAPPED]
+
+
+def device_nets(robot: Robot) -> list[dict]:
+    """Мережі пристроїв поза 192.168.88.0/24 (камери заказника на 192.168.15.x тощо).
+
+    Роутер бере в кожній таку адресу .1 (зазвичай це шлюз старої бортової мережі), а якщо її зайняв
+    пристрій — .254. Так пристрої не треба переналаштовувати.
+    """
+    ips = [device_ip(robot, h) for h in DEVICES]
+    nets: list[dict] = []
+    for net in dict.fromkeys(ipaddress.ip_network(f"{ip}/24", strict=False) for ip in ips if ip not in LAN):
+        router = next(a for a in (net.network_address + 1, net.network_address + 254) if a not in ips)
+        nets.append({"net": str(net), "router": str(router), "prefix": net.prefixlen})
+    return nets
 
 
 def operator_ip(site: Site, op: Operator) -> IPv4Address:

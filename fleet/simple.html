@@ -63,7 +63,7 @@
   button.link { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font-size: 14px; text-decoration: underline; }
   .sub { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
   .sub b { font-size: 15px; }
-  .status { font-size: 14.5px; font-weight: 600; }
+  .status { font-size: 14.5px; font-weight: 600; white-space: pre-line; }
   .addr { font: 700 20px ui-monospace, Consolas, monospace; padding: 8px 12px; border-radius: 9px; background: var(--soft); display: inline-block; }
   pre.code, pre.log { margin: 0; background: var(--code-bg); color: var(--code-fg); border-radius: 9px; padding: 12px 14px;
            font: 12.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
@@ -153,8 +153,9 @@ const I18N = {
     logs: "Журнали", log_saved: "Журнал: {log}", copy_log: "Скопіювати журнал", open_logs: "Відкрити теку з журналами",
     failed_log: "Не вийшло — подробиці в «Ході виконання» нижче. Журнал збережено, його можна надіслати.",
     s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → тип TCP, адреса й порт:",
-    s6_cams: "Камери: QGroundControl → Application Settings → Video → RTSP URL (адреса з рядка під камерою):",
-    s6_cam_auth: "Якщо QGroundControl попросить логін і пароль камери — admin і пароль, яким камери активували.",
+    s6_cams: "Камери. Termite QGroundControl програма налаштує сама — кнопка нижче (Termite має бути закритий). Звичайний QGroundControl: Application Settings → Video → RTSP URL.",
+    s6_cam_auth: "Логін і пароль камер уже в посиланнях. Другий рядок — легкий потік для Secondary RTSP URL у Termite.",
+    s6_termite: "Прописати камери в Termite", s6_termite_ok: "Камери прописано в Termite ({path}). Запустіть Termite — обидві камери вже там.",
     cam1: "Передня камера", cam2: "Задня камера",
     adm: "Передати НРК або видалити із сервера", adm_action: "Що зробити",
     adm_hint: "Команда для сервера, як у кроці 2: скопіюйте й вставте на сервері. Відповідь у програму вставляти не потрібно. Пілотів і НРК сервер знаходить за іменами, тож це можна робити з будь-якого ноутбука.",
@@ -215,8 +216,9 @@ const I18N = {
     logs: "Logs", log_saved: "Log: {log}", copy_log: "Copy log", open_logs: "Open the logs folder",
     failed_log: "It did not work - details in Progress below. The log is saved and can be sent.",
     s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → type TCP, address and port:",
-    s6_cams: "Cameras: QGroundControl → Application Settings → Video → RTSP URL (the address under the camera):",
-    s6_cam_auth: "If QGroundControl asks for the camera login and password: admin and the password the cameras were activated with.",
+    s6_cams: "Cameras. The program sets up Termite QGroundControl itself - the button below (Termite must be closed). Regular QGroundControl: Application Settings → Video → RTSP URL.",
+    s6_cam_auth: "The camera login and password are already in the links. The second line is the light stream for the Secondary RTSP URL in Termite.",
+    s6_termite: "Write the cameras into Termite", s6_termite_ok: "The cameras are written into Termite ({path}). Start Termite - both cameras are there.",
     cam1: "Front camera", cam2: "Rear camera",
     adm: "Give a UGV or remove from the server", adm_action: "What to do",
     adm_hint: "A command for the server, like in step 2: copy it and paste it on the server. No need to paste the response here. The server finds pilots and UGVs by name, so this works from any laptop.",
@@ -554,8 +556,16 @@ function render() {
     robot && robot.qgc && h("div", {}, h("p", { class: "hint" }, t("s6_qgc")), h("span", { class: "addr" }, robot.qgc.replace(":", "  :  "))),
     robot && robot.cameras && robot.cameras.length > 0 && h("div", {}, h("p", { class: "hint" }, t("s6_cams")),
       ...robot.cameras.map((c) => h("div", { style: "margin: 6px 0" }, h("b", {}, t(c.cam)), " ", h("span", { class: "addr" }, c.ip),
-        h("div", { class: "muted", style: "overflow-wrap: anywhere" }, c.rtsp))),
-      h("p", { class: "hint" }, t("s6_cam_auth"))),
+        h("div", { class: "muted", style: "overflow-wrap: anywhere" }, c.rtsp),
+        c.rtsp2 && c.rtsp2 !== c.rtsp && h("div", { class: "muted", style: "overflow-wrap: anywhere" }, c.rtsp2))),
+      h("p", { class: "hint" }, t("s6_cam_auth")),
+      h("div", { class: "row" }, btn(t("s6_termite"), async () => {
+        try {
+          const res = await api("/api/simple/termite", { id: robot.id });
+          message[6] = [[t("s6_termite_ok", { path: res.path }), ...res.warnings].join("\n"), res.warnings.length ? "warn" : "ok"];
+        } catch (e) { message[6] = [e.message, "bad"]; }
+        render();
+      }))),
     done5 && !done4 && h("div", { class: "status warn" }, t("s6_tunnel", { pilot })),
     h("div", {}, btn(t("s6_btn"), () => run(6, ["test", "--id", String(robot.id)]), { job: true, disabled: !done5, primary: done5 })),
     rep && h("p", { class: "hint" }, t("s6_last", { time: rep.time })),

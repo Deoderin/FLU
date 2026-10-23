@@ -276,3 +276,10 @@ def test_admin_command_from_wizard(simple_ui):
     status, body = call(simple_ui, "/api/simple/admin-command", {"action": "give", "serial": "ПФ-01", "pilot": "petro"})
     assert status == 400 and "кирилиця (ПФ)" in json.loads(body)["error"]
     assert call(simple_ui, "/api/simple/admin-command", {"action": "rm -rf", "serial": "PF-01"})[0] == 400
+
+
+def test_termite_needs_registered_ugv(simple_ui):
+    """Кнопка «Прописати камери в Termite» до реєстрації НРК на сервері пояснює, чого бракує."""
+    call(simple_ui, "/api/simple/prepare", {"pilot": "ivan", "serial": "FLU-2026-0001"})
+    status, body = call(simple_ui, "/api/simple/termite", {"id": 1})
+    assert status == 400 and "спершу зареєструйте" in json.loads(body)["error"]

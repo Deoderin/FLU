@@ -114,11 +114,13 @@ def test_round_trip(fresh, tmp_path):
     rsc = (fresh / "build" / "robots" / "nrk-001" / "robot.rsc").read_text("utf-8")
     assert "allowed-address=10.150.0.0/24,10.150.1.0/24" in rsc
     assert '/ip route add dst-address=10.150.1.0/24 gateway=wg-main' in rsc
-    assert "dst-address=192.168.88.108-192.168.88.109" in rsc  # передня і задня камери
+    assert 'dst-address=192.168.88.108 comment="fleet: front camera' in rsc  # передня і задня камери
+    assert 'dst-address=192.168.88.109 comment="fleet: rear camera' in rsc
     assert "mtu=1280" in rsc and "MTU = 1280" in pilot_conf
     streams = Renderer(inv, SecretStore(fresh)).camera_streams(inv.robot(1))
     assert [(c["cam"], c["ip"]) for c in streams] == [("cam1", "10.150.16.8"), ("cam2", "10.150.16.9")]
-    assert streams[0]["rtsp"] == "rtsp://10.150.16.8:554/Streaming/Channels/102"
+    assert streams[0]["rtsp"] == "rtsp://admin:a12345677@10.150.16.8:554/cam/realmonitor?channel=1&subtype=0"
+    assert streams[0]["rtsp2"].endswith("@10.150.16.8:554/cam/realmonitor?channel=1&subtype=1")
 
     conf = (server.dir / "flu.conf").read_text()
     assert "AllowedIPs = 10.150.1.10/32" in conf and "AllowedIPs = 10.150.0.2/32, 10.150.16.0/28" in conf

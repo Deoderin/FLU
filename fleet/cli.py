@@ -106,19 +106,15 @@ def cmd_provision(args) -> int:
 
 
 def cmd_bench_mikrotik(args) -> int:
-    from .mikrotik import (BENCH_HOST, MikroTikAuthError, MikroTikError, apply_full_config, find_bench_router, open_router,
-                           save_baseline, wait_for)
+    from .mikrotik import (BENCH_HOST, MikroTikAuthError, MikroTikError, apply_full_config, detect_devices,
+                           find_bench_router, open_router, save_baseline, wait_for)
 
     inv, store = load()
     robot = inv.robot(args.id)
     r = Renderer(inv, store)
-    r.render_robot(robot)
-    rsc = r.robot_dir(robot) / "robot.rsc"
-    _, fp = r.robot_rsc(robot, inv.site(robot.site), robot.slot)
+    r.render_robot(robot)  # помилки інвентаря — ще до пошуку роутера
     host = args.host or find_bench_router(name=robot.name)  # прошитий НРК знайдеться й через Starlink
     password = store.robot(robot.id)["mikrotik_password"]
-    print(T(f"{robot.name}: заливаю {rel(rsc)} на {host} і скидаю роутер",
-            f"{robot.name}: uploading {rel(rsc)} to {host} and resetting the router"))
     try:
         # введений пароль, порожній (старі роутери без пароля на наліпці) і наш, якщо роутер уже прошито
         mt = open_router(host, [args.password, "", password])
@@ -141,6 +137,22 @@ def cmd_bench_mikrotik(args) -> int:
             f"router - it is reset to factory settings and the label password is entered if there is one. ({exc})",
         )) from None
     with mt:
+        # Камери й ФК лишаються на своїх адресах (хоч 192.168.15.x): роутер одразу прошивається під них
+        try:
+            found = detect_devices(mt, inv.platform(robot)["ports"])
+        except Exception as exc:  # без пошуку прошиваємо з адресами, що були: це не причина зупинятися
+            found = {}
+            print(T(f"  пристрої не знайшов ({exc}) — лишаю адреси, що були",
+                    f"  could not look for the devices ({exc}) - keeping the previous addresses"))
+        before = dict(robot.devices)
+        inv.set_devices(robot.id, {**robot.devices, **found})
+        if robot.devices != before:
+            inv.save_robots()
+            r.render_robot(robot)
+        rsc = r.robot_dir(robot) / "robot.rsc"
+        _, fp = r.robot_rsc(robot, inv.site(robot.site), robot.slot)
+        print(T(f"{robot.name}: заливаю {rel(rsc)} на {host} і скидаю роутер",
+                f"{robot.name}: uploading {rel(rsc)} to {host} and resetting the router"))
         apply_full_config(mt, rsc)
     print(T("роутер перезавантажується, чекаю...", "the router is rebooting, waiting..."))
     # На стенді після скидання роутер на 192.168.88.1; через Starlink — на тій самій адресі (DHCP Starlink за MAC).

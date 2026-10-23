@@ -80,7 +80,7 @@ def test_server_bundle(provisioned, store):
     mtx = safe_yaml.load((server / "config" / "mediamtx.yml").read_text("utf-8"))
     cam = mtx["paths"]["nrk-001-cam1"]
     assert cam["sourceOnDemand"] is True
-    assert re.fullmatch(r"rtsp://admin:\w+@10\.150\.16\.8:554/Streaming/Channels/102", cam["source"])
+    assert cam["source"] == "rtsp://admin:a12345677@10.150.16.8:554/cam/realmonitor?channel=1&subtype=0"
     assert mtx["rtspAddress"] == "10.150.0.1:8554"
 
     for name in ("docker-compose.yml", "install.sh", "arbiter/arbiter.py", "arbiter/Dockerfile"):
@@ -191,7 +191,10 @@ def test_cameras_dstnat_before_netmap(provisioned, store):
         ("10.150.16.9", "dst-nat", "192.168.88.109"),
         ("10.150.16.0/28", "netmap", "192.168.88.0/28"),
     ]
-    assert "dst-address=192.168.88.108-192.168.88.109 protocol=tcp dst-port=554" in rsc  # RTSP пропускає файрвол
+    # файрвол пропускає до камер усе (RTSP і RTP по UDP), а великі UDP-пакети роутер дробить під тунель
+    assert 'dst-address=192.168.88.108 comment="fleet: front camera' in rsc
+    assert 'dst-address=192.168.88.109 comment="fleet: rear camera' in rsc
+    assert "action=clear-df protocol=udp out-interface-list=fleet-sites" in rsc
     assert "ranges=192.168.88.200-192.168.88.249" in rsc  # DHCP не роздає адреси камер
 
 
@@ -224,7 +227,7 @@ def test_cameras_move_from_old_addresses(provisioned, store, monkeypatch):
         def set_address(self, ip, mask, gateway):
             at[live(self.ip)] = ip
 
-    monkeypatch.setitem(C.VENDORS, "hikvision", FakeCamera)
+    monkeypatch.setitem(C.VENDORS, provisioned.platforms["flu-v1"]["cameras"]["vendor"], FakeCamera)
     C.setup_cameras(provisioned, store, provisioned.robot(1), FakeRouter(), log=lambda *_: None)
     assert at == {"cam1": "192.168.88.108", "cam2": "192.168.88.109"}
     assert not disabled  # усі порти знову ввімкнено

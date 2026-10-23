@@ -113,7 +113,8 @@ def setup_cameras(inv: Inventory, store: SecretStore, robot: Robot, mt: MikroTik
     if vendor is None:
         raise CameraError(T(f"невідомий виробник камер {cfg['vendor']}: підтримуються {', '.join(VENDORS)}",
                             f"unknown camera vendor {cfg['vendor']}: supported {', '.join(VENDORS)}"))
-    user, password = cfg["factory_user"], store.robot(robot.id)["camera_password"]
+    # Пароль, спільний для всіх камер платформи (rtsp_password), або свій для НРК, виданий fleet provision
+    user, password = cfg["factory_user"], cfg.get("rtsp_password") or store.robot(robot.id)["camera_password"]
     factory = ipaddress.ip_address(cfg["factory_ip"])
     factory_net = ipaddress.ip_network(f"{factory}/24", strict=False)
     helper = factory_net.network_address + (251 if int(factory) & 255 == 250 else 250)

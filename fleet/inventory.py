@@ -1,7 +1,8 @@
 """Inventory: майданчики, НРК, оператори та платформи, а також їхня перевірка.
 
 Людина править YAML-файли в inventory/ і base/, fleet їх читає та перевіряє.
-Єдине, що fleet записує назад, — site і slot НРК (provision / move).
+Єдине, що fleet записує назад, — site і slot НРК (provision / move) та адреси пристроїв,
+знайдені під час прошивки (devices).
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ from . import addressing as A
 from .i18n import T
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
+MAC_RE = re.compile(r"^[0-9A-F]{2}(:[0-9A-F]{2}){5}$")
 ROBOT_LAN = A.LAN
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
 ROLES = {"operator", "dispatcher"}
@@ -203,6 +205,9 @@ class Robot:
     site: str | None = None
     slot: int | None = None
     service_tunnel: bool = False
+    # Пристрої на борту не на стандартних 192.168.88.x, знайдені під час прошивки:
+    # {"cam1": {"ip": "192.168.15.108", "mac": "40:7A:A4:EC:FF:B7"}, ...}
+    devices: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -294,6 +299,8 @@ class Inventory:
                 site=r.get("site"),
                 slot=int(r["slot"]) if r.get("slot") is not None else None,
                 service_tunnel=bool(r.get("service_tunnel", False)),
+                devices={str(k): ({"ip": str(v)} if isinstance(v, str) else {key: str(v[key]) for key in ("ip", "mac") if v.get(key)})
+                         for k, v in (r.get("devices") or {}).items()},
             )
             if robot.id in robots:
                 raise InventoryError(T(f"НРК з id {robot.id} описано двічі", f"UGV id {robot.id} is listed twice"))
@@ -366,6 +373,20 @@ class Inventory:
                 item["slot"] = slot
             else:  # одразу після site, щоб запис читався
                 item.insert(list(item).index("site") + 1, "slot", slot)
+            return
+
+    def set_devices(self, robot_id: int, devices: dict[str, dict[str, str]]) -> None:
+        """Пристрої, знайдені під час прошивки. Стандартні 192.168.88.x не записуємо: так robots.yaml чистіший."""
+        robot = self.robot(robot_id)
+        robot.devices = {h: dict(d) for h, d in devices.items()
+                         if h in A.DEVICES and ipaddress.ip_address(d["ip"]) != A.lan_ip(h)}
+        for item in self._robots_doc["robots"]:
+            if int(item["id"]) != robot_id:
+                continue
+            if robot.devices:
+                item["devices"] = dict(robot.devices)
+            elif "devices" in item:
+                del item["devices"]
             return
 
     def save_robots(self) -> None:
@@ -473,6 +494,25 @@ class Inventory:
                         f"{what}: service_tunnel is on but the service section is missing in sites.yaml"))
                 elif A.service_robot_ip(self.service, r.id) >= self.service.network.broadcast_address:
                     e(T(f"{what}: id не вміщується в service.network", f"{what}: id does not fit into service.network"))
+            for host, dev in r.devices.items():
+                try:
+                    ip = ipaddress.ip_address(dev.get("ip", ""))
+                except ValueError:
+                    e(T(f"{what}: devices.{host}.ip — не IP-адреса: {dev.get('ip')}",
+                        f"{what}: devices.{host}.ip is not an IP address: {dev.get('ip')}"))
+                    continue
+                if dev.get("mac") and not MAC_RE.match(dev["mac"]):
+                    e(T(f"{what}: devices.{host}.mac — не MAC-адреса: {dev['mac']}",
+                        f"{what}: devices.{host}.mac is not a MAC address: {dev['mac']}"))
+                clash = next((label for net, label in nets if ip in net), None)
+                if host not in A.DEVICES:
+                    e(T(f"{what}: devices.{host} — невідомий пристрій (є {', '.join(A.DEVICES)})",
+                        f"{what}: devices.{host} is an unknown device (known: {', '.join(A.DEVICES)})"))
+                elif not ip.is_private or ip in CGNAT or clash:
+                    e(T(f"{what}: devices.{host} {ip} — потрібна приватна адреса поза мережами майданчиків"
+                        + (f" (перетин із {clash})" if clash else ""),
+                        f"{what}: devices.{host} {ip} must be a private address outside the site networks"
+                        + (f" (overlaps {clash})" if clash else "")))
 
         op_ids: dict[tuple[str, int], str] = {}
         for o in self.operators.values():

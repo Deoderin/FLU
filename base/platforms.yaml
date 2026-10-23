@@ -1,12 +1,15 @@
 # Ревізії заліза. Усе, що однакове в НРК однієї ревізії, живе тут,
 # а не в шаблонах: порти MikroTik, спосіб підключення ФК, камери, батарея.
 #
-# Внутрішня мережа однакова на всіх НРК (див. README):
+# Внутрішня мережа НРК (див. README):
 #   192.168.88.1   MikroTik
 #   192.168.88.2   польотний контролер / мережевий адаптер ФК
 #   192.168.88.108 передня камера (cam1)
 #   192.168.88.109 задня камера (cam2)
 #   192.168.88.200-249  DHCP (ноутбук на стенді тощо)
+# Пристрої не обов'язково переналаштовувати: під час прошивки fleet дивиться, хто стоїть у портах
+# cam1 / cam2 / fc і на якій адресі (наприклад 192.168.15.108), записує це в robots.yaml (devices),
+# а роутер бере адресу в їхній мережі й веде тунель туди.
 
 platforms:
   flu-v1:
@@ -37,14 +40,15 @@ platforms:
       action: 2             # FS_ACTION: 2 = Hold
 
     cameras:
-      vendor: hikvision     # hikvision | dahua
-      factory_ip: 192.168.1.64
+      vendor: dahua         # hikvision | dahua
+      factory_ip: 192.168.1.108   # hikvision: 192.168.1.64
       factory_user: admin
-      # Нові камери потребують активації (задати пароль) через SADP / ConfigTool.
-      # Активуйте їх паролем, який видав fleet provision, тоді скрипт сам змінить IP.
+      # Камери не перепрошуються: логін і пароль однакові на всіх НРК і йдуть у посилання для QGroundControl
       rtsp_user: admin
-      rtsp_path: /Streaming/Channels/102   # додатковий потік: він легший для LTE
-      # dahua: /cam/realmonitor?channel=1&subtype=1
+      rtsp_password: a12345677
+      rtsp_path: /cam/realmonitor?channel=1&subtype=0            # основний потік
+      rtsp_path_secondary: /cam/realmonitor?channel=1&subtype=1  # легкий потік (Secondary RTSP URL у Termite)
+      # hikvision: /Streaming/Channels/101 і /Streaming/Channels/102
 
     battery: {min_v: 42.0, max_v: 58.8}   # для приймального тесту
 

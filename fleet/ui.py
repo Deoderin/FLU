@@ -32,6 +32,7 @@ from . import addressing as A
 from .i18n import LANGS, T, get_lang, set_lang
 from .inventory import Inventory, InventoryError
 from .keystore import SecretError, SecretStore
+from .termite import TermiteError
 
 PAGES = {"/": Path(__file__).with_name("simple.html"), "/advanced": Path(__file__).with_name("ui.html")}
 PKG_PARENT = Path(__file__).resolve().parents[1]
@@ -469,6 +470,15 @@ class Handler(BaseHTTPRequestHandler):
                 cmd = admin_command(root, act, serial=serial or None, pilot=pilot or None)
                 ui_log(root, f"admin-command: {act} serial={serial} pilot={pilot}")
                 return self._json({"command": cmd})
+            if url.path == "/api/simple/termite":
+                from .render import Renderer
+                from .termite import write_cameras
+                inv = Inventory.load(root)
+                robot = inv.robot(int(body.get("id") or 0))
+                streams = Renderer(inv, SecretStore(root)).camera_streams(robot)
+                result = write_cameras(streams)
+                ui_log(root, f"termite: {robot.name} -> {result['path']}" + "".join(f" | {w}" for w in result["warnings"]))
+                return self._json(result)
             if url.path == "/api/simple/open-pilot-conf":
                 path = pilot_conf(root, str(body.get("pilot", "")))
                 if os.name == "nt":
@@ -480,7 +490,7 @@ class Handler(BaseHTTPRequestHandler):
                 if os.name == "nt":
                     os.startfile(path)  # Провідник із теки журналів
                 return self._json({"path": str(path)})
-        except (HubError, InventoryError, SecretError, ValueError) as exc:
+        except (HubError, InventoryError, SecretError, TermiteError, ValueError) as exc:
             ui_log(root, f"{action}: ERROR {exc}")
             return self._error(400, str(exc))
         except Exception:

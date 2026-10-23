@@ -1,6 +1,7 @@
 """MikroTik по SSH: застосування конфігу на стенді, віддалений доступ, відбиток і дрейф."""
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 import socket
@@ -307,6 +308,96 @@ def open_router(host: str, passwords: list[str]) -> MikroTik:
         except MikroTikError as exc:
             last = last if isinstance(last, MikroTikAuthError) else exc  # «пароль не той» важливіший за тайм-аут
     raise last or MikroTikError(T("немає пароля для входу", "no password to log in with"))
+
+
+DEVICE_LABELS = {"cam1": ("передня камера", "front camera"), "cam2": ("задня камера", "rear camera"),
+                 "fc": ("ФК", "FC")}
+IP_MAC_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\b")
+ADDRESS_RE = re.compile(r"(?<![-\w])address=([\d.]+)")
+MAC_FIELD_RE = re.compile(r"\bmac-address=([0-9A-Fa-f:]{17})")
+NO_DEVICE_NETS = ("0.0.0.0/8", "169.254.0.0/16", "127.0.0.0/8")
+
+
+def parse_bridge_hosts(text: str) -> dict[str, list[str]]:
+    """/interface bridge host print terse: які MAC видно за кожним портом мосту."""
+    hosts: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        mac, port = MAC_FIELD_RE.search(line), re.search(r"\bon-interface=(\S+)", line)
+        if mac and port and mac[1].upper() not in hosts.setdefault(port[1], []):
+            hosts[port[1]].append(mac[1].upper())
+    return hosts
+
+
+def parse_ip_macs(text: str) -> dict[str, list[str]]:
+    """MAC -> IP: таблиця /tool ip-scan («192.168.15.108  40:7A:...») і /ip arp print terse (address=... mac-address=...)."""
+    seen: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        m = IP_MAC_RE.search(line)
+        pair = (m[1], m[2]) if m else None
+        if pair is None:
+            a, b = ADDRESS_RE.search(line), MAC_FIELD_RE.search(line)
+            pair = (a[1], b[1]) if a and b else None
+        if pair and pair[0] not in seen.setdefault(pair[1].upper(), []):
+            seen[pair[1].upper()].append(pair[0])
+    return seen
+
+
+def pick_devices(ports: dict[str, str], hosts: dict[str, list[str]], ip_macs: dict[str, list[str]],
+                 own: set[str], log=print) -> dict[str, dict[str, str]]:
+    """Пристрій у порту cam1 / cam2 / fc і його адреса. Камери розрізняємо за портом, а не за адресою."""
+    def usable(ip: str) -> bool:
+        addr = ipaddress.ip_address(ip)
+        return ip not in own and not any(addr in ipaddress.ip_network(n) for n in NO_DEVICE_NETS)
+
+    found: dict[str, dict[str, str]] = {}
+    for host in A.DEVICES:
+        port, label = ports.get(host), T(*DEVICE_LABELS[host])
+        macs = hosts.get(port, [])
+        pairs = [(mac, ip) for mac in macs for ip in ip_macs.get(mac, []) if usable(ip)]
+        if not macs:
+            log(T(f"  {label} ({port}): у порту нічого не видно — лишаю адресу, що була",
+                  f"  {label} ({port}): nothing on the port - keeping the previous address"))
+            continue
+        if not pairs:
+            log(T(f"  {label} ({port}): пристрій {macs[0]} є, але його адресу не знайдено — лишаю адресу, що була",
+                  f"  {label} ({port}): device {macs[0]} is there but its address was not found - keeping the previous one"))
+            continue
+        # Кілька адрес — беремо стандартну, якщо вона серед них, інакше першу
+        mac, ip = next((p for p in pairs if p[1] == str(A.lan_ip(host))), pairs[0])
+        found[host] = {"ip": ip, "mac": mac}
+        log(T(f"  {label} ({port}): {ip} ({mac})", f"  {label} ({port}): {ip} ({mac})"))
+    by_ip: dict[str, list[str]] = {}
+    for host, dev in found.items():
+        by_ip.setdefault(dev["ip"], []).append(host)
+    for ip, same in by_ip.items():
+        if len(same) > 1:  # дві камери із заводською адресою: роутер не розведе їх по різних адресах тунелю
+            names = ", ".join(T(*DEVICE_LABELS[h]) for h in same)
+            log(T(f"  увага: {names} на одній адресі {ip} — змініть одній із них адресу (Dahua ConfigTool), "
+                  f"інакше через тунель буде видно лише одну", f"  warning: {names} share the address {ip} - change "
+                  f"the address of one of them (Dahua ConfigTool), otherwise only one is visible through the tunnel"))
+            for h in same:
+                del found[h]
+    return found
+
+
+def detect_devices(mt: MikroTik, ports: dict[str, str], log=print, scan_seconds: int = 10) -> dict[str, dict[str, str]]:
+    """Хто стоїть у портах камер і ФК і на якій адресі — до прошивки, щоб роутер одразу вів тунель куди треба.
+
+    Адресу пристрою з чужої мережі (192.168.15.x) ARP роутера не знає, тому слухаємо мережу /tool ip-scan:
+    камери й адаптери ФК постійно щось шлють (ARP, мультикаст), і за 10 секунд їх видно.
+    """
+    bridge = mt.get(f"/interface bridge port get [find interface={ports['cam1']}] bridge")
+    if not re.fullmatch(r"[\w.-]+", bridge):
+        log(T(f"  порт {ports['cam1']} не в мості — пристрої не шукаю, лишаю адреси, що були",
+              f"  port {ports['cam1']} is not in a bridge - not looking for devices, keeping the previous addresses"))
+        return {}
+    log(T(f"  шукаю камери й ФК у портах роутера ({scan_seconds} с)...",
+          f"  looking for the cameras and FC on the router ports ({scan_seconds} s)..."))
+    hosts = parse_bridge_hosts(mt.run("/interface bridge host print terse where !local", check=False))
+    scan = mt.run(f"/tool ip-scan interface={bridge} duration={scan_seconds}s", check=False, timeout=scan_seconds + 30)
+    ip_macs = parse_ip_macs(scan + "\n" + mt.run("/ip arp print terse", check=False))
+    own = set(ADDRESS_RE.findall(mt.run("/ip address print terse", check=False)))
+    return pick_devices(ports, hosts, ip_macs, own, log=log)
 
 
 def apply_full_config(mt: MikroTik, rsc: Path) -> None:
