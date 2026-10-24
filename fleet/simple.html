@@ -149,13 +149,23 @@ const I18N = {
     s5_not_ours: "НРК {name} через Wi-Fi не знайдено. Без кабелю видно лише НРК, уже прошитий цією програмою, коли ноутбук у Wi-Fi того самого Starlink. Новий чи скинутий роутер — тільки кабелем.",
     s5_fw: "Якщо Windows спитає дозвіл для Python у мережі — натисніть «Дозволити»: так програма бачить роутер.",
     s5_confirm: "Роутер буде скинуто й перепрошито під цей НРК. Продовжити?",
+    s5_devs: "Пристрої на борту (прошивка {time}):", s5_port: "порт {n}", fc: "Адаптер ФК",
+    dev_found: "{ip} ✓", dev_kept: "{ip} — адреса з минулої прошивки (зараз не відповів)", dev_missing: "не знайдено ✗",
+    s5_stopped: "Роутер не прошито: програма не знайшла частину пристроїв. Якщо роутер вів би до них тунель наосліп, пілот бачив би чорний екран і не мав би телеметрії. Перевірте живлення й кабелі цих пристроїв (порти 2 і 3 — камери, 4 — ФК) і натисніть «Шукати ще раз». Якщо пристрою на НРК справді немає — «Прошити без них».",
+    s5_stopped_short: "Роутер не прошито: не всі пристрої знайшлися — дивіться список вище.",
+    s5_retry: "Шукати ще раз", s5_force: "Прошити без них",
+    s5_force_confirm: "Роутер буде прошито без ненайдених пристроїв: через тунель їх не буде видно, доки повторна прошивка їх не знайде. Продовжити?",
+    s5_without: "Прошито без: {list}. Через тунель їх не видно. Коли під'єднаєте — перепрошийте роутер (можна через тунель, кнопка нижче).",
+    s5_tunnel_btn: "Перепрошити через тунель",
+    s5_tunnel_hint: "Зібраний НРК у полі можна перепрошити без кабелю — через тунель пілота {pilot} (крок 4). Програма заново знайде камери й ФК. НРК буде без зв'язку 1–2 хвилини.",
+    s5_tunnel_confirm: "Роутер НРК перепрошиється через тунель і 1–2 хвилини буде без зв'язку. Не робіть цього, коли НРК їде. Продовжити?",
     s6: "Готово", s6_hint: "Під'єднайте Starlink у порт 1 роутера та увімкніть НРК. Коли він вийде на зв'язок, підключайтеся в QGroundControl:",
     logs: "Журнали", log_saved: "Журнал: {log}", copy_log: "Скопіювати журнал", open_logs: "Відкрити теку з журналами",
     failed_log: "Не вийшло — подробиці в «Ході виконання» нижче. Журнал збережено, його можна надіслати.",
     s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → тип TCP, адреса й порт:",
     s6_udp: "Якщо адаптер ФК сам шле телеметрію по UDP (Waveshare у режимі UDP тощо), нічого додавати не треба: сервер передає її пілоту-власнику, а Termite / QGroundControl приймає сам на порт 14550 (AutoConnect UDP). Керування йде назад тим самим шляхом.",
     s6_cams: "Камери. Termite QGroundControl програма налаштує сама — кнопка нижче (Termite має бути закритий). Звичайний QGroundControl: Application Settings → Video → RTSP URL.",
-    s6_cam_auth: "Логін і пароль камер уже в посиланнях. Другий рядок — легкий потік для Secondary RTSP URL у Termite.",
+    s6_cam_auth: "Логін і пароль камер уже в посиланнях. Другий рядок — легкий потік для Secondary RTSP URL у Termite. У Termite програма пише rtspt:// замість rtsp:// — відео по TCP: по UDP через тунель Termite лишається чорним. Вручну в Termite теж ставте rtspt://.",
     s6_termite: "Прописати камери в Termite", s6_termite_ok: "Камери прописано в Termite ({path}). Запустіть Termite — обидві камери вже там.",
     cam1: "Передня камера", cam2: "Задня камера",
     adm: "Передати НРК або видалити із сервера", adm_action: "Що зробити",
@@ -171,7 +181,8 @@ const I18N = {
     running: "Виконується… {s} с", done: "Готово ✓", failed: "Не вийшло — подробиці нижче", log: "Хід виконання",
     chk: { inventory: "налаштування", registration: "реєстрація", mavlink: "зв'язок з НРК (MAVLink)", params: "параметри", gps: "GPS",
            battery: "батарея", cameras: "камери", mikrotik: "роутер", mikrotik_config: "роутер: конфіг", site_tunnel: "тунель роутера",
-           mikrotik_drift: "роутер: зміни", lte: "LTE", arbiter: "арбітр", cam1: "передня камера", cam2: "задня камера" },
+           mikrotik_drift: "роутер: зміни", lte: "LTE", arbiter: "арбітр", cam1: "передня камера", cam2: "задня камера",
+           dev_cam1: "передня камера на борту", dev_cam2: "задня камера на борту", dev_fc: "адаптер ФК на борту" },
   },
   en: {
     title: "UGV Quick Setup", adv: "Advanced mode",
@@ -214,13 +225,23 @@ const I18N = {
     s5_not_ours: "UGV {name} was not found over Wi-Fi. Without a cable only a UGV already flashed by this program is visible, when the laptop is on the Wi-Fi of the same Starlink. A new or reset router needs a cable.",
     s5_fw: "If Windows asks to allow Python on the network, press Allow: that is how the program sees the router.",
     s5_confirm: "The router will be reset and flashed for this UGV. Continue?",
+    s5_devs: "Devices on board (flashing {time}):", s5_port: "port {n}", fc: "FC adapter",
+    dev_found: "{ip} ✓", dev_kept: "{ip} - the address from the previous flashing (did not answer now)", dev_missing: "not found ✗",
+    s5_stopped: "The router is not flashed: the program did not find some of the devices. If the router led the tunnel to them blindly, the pilot would see a black screen and get no telemetry. Check the power and cables of these devices (ports 2 and 3 are the cameras, 4 is the FC) and press \"Search again\". If the UGV really has no such device - \"Flash without them\".",
+    s5_stopped_short: "The router is not flashed: not all devices were found - see the list above.",
+    s5_retry: "Search again", s5_force: "Flash without them",
+    s5_force_confirm: "The router will be flashed without the devices that were not found: they are not visible through the tunnel until a new flashing finds them. Continue?",
+    s5_without: "Flashed without: {list}. They are not visible through the tunnel. Once connected, reflash the router (also possible through the tunnel, the button below).",
+    s5_tunnel_btn: "Reflash through the tunnel",
+    s5_tunnel_hint: "An assembled UGV in the field can be reflashed without a cable - through the tunnel of pilot {pilot} (step 4). The program finds the cameras and the FC again. The UGV is offline for 1-2 minutes.",
+    s5_tunnel_confirm: "The UGV router is reflashed through the tunnel and is offline for 1-2 minutes. Do not do it while the UGV is driving. Continue?",
     s6: "Done", s6_hint: "Connect Starlink to router port 1 and power on the UGV. When it is online, connect in QGroundControl:",
     logs: "Logs", log_saved: "Log: {log}", copy_log: "Copy log", open_logs: "Open the logs folder",
     failed_log: "It did not work - details in Progress below. The log is saved and can be sent.",
     s6_qgc: "QGroundControl → Application Settings → Comm Links → Add → type TCP, address and port:",
     s6_udp: "If the FC adapter sends telemetry over UDP by itself (Waveshare in UDP mode etc.), nothing needs to be added: the server passes it to the owner pilot, and Termite / QGroundControl picks it up on port 14550 (AutoConnect UDP). Control goes back the same way.",
     s6_cams: "Cameras. The program sets up Termite QGroundControl itself - the button below (Termite must be closed). Regular QGroundControl: Application Settings → Video → RTSP URL.",
-    s6_cam_auth: "The camera login and password are already in the links. The second line is the light stream for the Secondary RTSP URL in Termite.",
+    s6_cam_auth: "The camera login and password are already in the links. The second line is the light stream for the Secondary RTSP URL in Termite. For Termite the program writes rtspt:// instead of rtsp:// - video over TCP: over UDP through the tunnel Termite stays black. Use rtspt:// in Termite by hand too.",
     s6_termite: "Write the cameras into Termite", s6_termite_ok: "The cameras are written into Termite ({path}). Start Termite - both cameras are there.",
     cam1: "Front camera", cam2: "Rear camera",
     adm: "Give a UGV or remove from the server", adm_action: "What to do",
@@ -236,7 +257,8 @@ const I18N = {
     running: "Running… {s} s", done: "Done ✓", failed: "It did not work - details below", log: "Progress",
     chk: { inventory: "setup", registration: "registration", mavlink: "link to the UGV (MAVLink)", params: "parameters", gps: "GPS",
            battery: "battery", cameras: "cameras", mikrotik: "router", mikrotik_config: "router: config", site_tunnel: "router tunnel",
-           mikrotik_drift: "router: changes", lte: "LTE", arbiter: "arbiter", cam1: "front camera", cam2: "rear camera" },
+           mikrotik_drift: "router: changes", lte: "LTE", arbiter: "arbiter", cam1: "front camera", cam2: "rear camera",
+           dev_cam1: "front camera on board", dev_cam2: "rear camera on board", dev_fc: "FC adapter on board" },
   },
 };
 
@@ -357,7 +379,9 @@ function showJob(job) {
   log.scrollTop = log.scrollHeight;
   if (jobStep) {
     message[jobStep] = job.running ? [t("running", { s: job.seconds }), "warn"]
-      : job.code === 0 ? [t("done"), "ok"] : [t("failed_log"), "bad"];
+      : job.code === 0 ? [t("done"), "ok"]
+      : job.code === 3 && jobStep === 5 ? [t("s5_stopped_short"), "warn"]  // не всі пристрої знайшлися: вибір у кроці 5
+      : [t("failed_log"), "bad"];
     const el = document.getElementById(`msg-${jobStep}`);
     if (el) { el.textContent = message[jobStep][0]; el.className = "status " + message[jobStep][1]; }
   }
@@ -515,6 +539,16 @@ function render() {
   // 5. Роутер
   const [lpw, ipw] = field(`pwd-${robot?.id}`, t("s5_pwd"), { type: "password" });
   const found = routerFound && h("div", { class: "status " + routerFound[1] }, ...routerFound[0].map((line) => h("div", {}, line)));
+  const flashArgs = (extra = [], tunnel = false) => ["bench", "mikrotik", "--id", String(robot.id),
+    ...(tunnel ? ["--tunnel"] : ["--password", ipw.value]), ...extra];
+  // Кого знайшла остання прошивка: не знайдених без адреси з минулого разу роутер не прошиває, доки людина не вирішить
+  const scan = robot && robot.scan;
+  const missing = scan ? scan.devices.filter((d) => d.status === "missing") : [];
+  const stopped = Boolean(scan && scan.stopped && missing.length);
+  const devName = (d) => `${t(d.host === "fc" ? "fc" : d.host)} (${t("s5_port", { n: (d.port || "?").replace("ether", "") })})`;
+  const devList = scan && h("div", { class: "sub" }, h("div", { class: "hint" }, t("s5_devs", { time: scan.time })),
+    ...[...scan.devices].sort((a, b) => (a.port || "").localeCompare(b.port || "")).map((d) => h("div", {}, devName(d), ": ",
+      h("span", { class: { found: "ok", kept: "warn", missing: "bad" }[d.status] }, t("dev_" + d.status, { ip: d.ip || "" })))));
   steps.push(card(5, stateOf(done5, done3), t("s5"),
     h("p", { class: "hint" }, t("s5_hint")),
     h("p", { class: "hint" }, t("s5_wifi")),
@@ -550,8 +584,22 @@ function render() {
     found,
     h("div", { class: "row" }, lpw, btn(t("s5_btn"), () => {
       if (!confirm(t("s5_confirm"))) return;
-      run(5, ["bench", "mikrotik", "--id", String(robot.id), "--password", ipw.value]);
-    }, { primary: done3 && !done5, job: true, disabled: !done3 }))));
+      run(5, flashArgs());
+    }, { primary: done3 && !done5 && !stopped, job: true, disabled: !done3 })),
+    devList,
+    stopped && h("div", { class: "status warn" }, t("s5_stopped")),
+    stopped && h("div", { class: "row" },
+      btn(t("s5_retry"), () => run(5, flashArgs([], scan.via === "tunnel")), { job: true, primary: true }),
+      btn(t("s5_force"), () => {
+        if (confirm(t("s5_force_confirm"))) run(5, flashArgs(["--allow-missing"], scan.via === "tunnel"));
+      }, { job: true })),
+    !stopped && missing.length > 0 && h("div", { class: "status warn" }, t("s5_without", { list: missing.map(devName).join(", ") })),
+    // Зібраний НРК у полі: пілот-власник бачить його роутер через тунель, кабель не потрібен
+    robot && robot.site_kind === "hub" && done5 && h("div", { class: "sub" },
+      h("p", { class: "hint" }, t("s5_tunnel_hint", { pilot })),
+      h("div", {}, btn(t("s5_tunnel_btn"), () => {
+        if (confirm(t("s5_tunnel_confirm"))) run(5, flashArgs([], true));
+      }, { job: true, disabled: !done4 })))));
 
   // 6. Готово
   const rep = robot && robot.report;

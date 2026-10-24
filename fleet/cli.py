@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from . import ROOT
@@ -105,15 +107,39 @@ def cmd_provision(args) -> int:
     return 0
 
 
+EXIT_DEVICES_MISSING = 3  # роутер не прошито: не всі камери й ФК знайшлися (майстер питає, що робити)
+
+
+def save_device_scan(path: Path, robot, ports: dict, found: dict, stopped: bool, via: str) -> None:
+    """Що знайшла остання прошивка: майстер показує це в кроці 5 і пропонує повторити пошук."""
+    devices = []
+    for host in A.DEVICES:
+        dev = found.get(host) or robot.devices.get(host) or {}
+        status = "found" if host in found else "kept" if host in robot.devices else "missing"
+        devices.append({"host": host, "port": ports.get(host), "ip": dev.get("ip"), "status": status})
+    path.write_text(json.dumps({"time": time.strftime("%d.%m.%Y %H:%M"), "stopped": stopped, "via": via,
+                                "devices": devices}, ensure_ascii=False, indent=2), "utf-8")
+
+
 def cmd_bench_mikrotik(args) -> int:
-    from .mikrotik import (BENCH_HOST, MikroTikAuthError, MikroTikError, apply_full_config, detect_devices,
-                           find_bench_router, open_router, save_baseline, wait_for)
+    from .mikrotik import (BENCH_HOST, DEVICE_LABELS, MikroTikAuthError, MikroTikError, apply_full_config,
+                           detect_devices, find_bench_router, open_router, save_baseline, wait_for)
 
     inv, store = load()
     robot = inv.robot(args.id)
     r = Renderer(inv, store)
     r.render_robot(robot)  # помилки інвентаря — ще до пошуку роутера
-    host = args.host or find_bench_router(name=robot.name)  # прошитий НРК знайдеться й через Starlink
+    if args.tunnel:
+        # Зібраний НРК у полі: ноутбук пілота-власника бачить його роутер через тунель (netmap -> 192.168.88.1)
+        site = inv.site(robot.site) if robot.provisioned else None
+        if not site or not site.hub:
+            raise MikroTikError(T(f"{robot.name}: через тунель пілота можна перепрошити лише НРК, зареєстрований на hub-сервері",
+                                  f"{robot.name}: only a UGV registered on a hub server can be reflashed through the pilot tunnel"))
+        host = str(A.mapped_ip(site, robot.slot, "router"))
+        print(T(f"{robot.name}: перепрошиваю через тунель пілота ({host}). НРК буде без зв'язку 1–2 хвилини",
+                f"{robot.name}: reflashing through the pilot tunnel ({host}). The UGV is offline for 1-2 minutes"))
+    else:
+        host = args.host or find_bench_router(name=robot.name)  # прошитий НРК знайдеться й через Starlink
     password = store.robot(robot.id)["mikrotik_password"]
     try:
         # введений пароль, порожній (старі роутери без пароля на наліпці) і наш, якщо роутер уже прошито
@@ -128,6 +154,13 @@ def cmd_bench_mikrotik(args) -> int:
             f"case-sensitive. You can check it in a browser: http://{host}, user admin",
         )) from None
     except MikroTikError as exc:
+        if args.tunnel:
+            raise MikroTikError(T(
+                f"роутер НРК не відповідає через тунель. Перевірте: у WireGuard увімкнено тунель пілота-власника цього НРК; "
+                f"НРК увімкнено й він на зв'язку (Starlink). ({exc})",
+                f"the UGV router does not answer through the tunnel. Check: the tunnel of the pilot who owns this UGV is on "
+                f"in WireGuard; the UGV is powered and online (Starlink). ({exc})",
+            )) from None
         raise MikroTikError(T(
             f"роутер не відповідає. Перевірте: кабель від ноутбука в порту 5 (або ноутбук у Wi-Fi того самого Starlink, "
             f"якщо НРК уже прошито); роутер увімкнено; минуло 30 секунд після ввімкнення; для нового роутера — "
@@ -138,12 +171,30 @@ def cmd_bench_mikrotik(args) -> int:
         )) from None
     with mt:
         # Камери й ФК лишаються на своїх адресах (хоч 192.168.15.x): роутер одразу прошивається під них
+        platform = inv.platform(robot)
+        ports = platform["ports"]
+        # Де ще шукати мовчазні пристрої: адреси з минулої прошивки й заводська адреса камер
+        factory = platform.get("cameras", {}).get("factory_ip")
+        hints = [d["ip"] for d in robot.devices.values() if d.get("ip")] + ([factory] if factory else [])
         try:
-            found = detect_devices(mt, inv.platform(robot)["ports"])
-        except Exception as exc:  # без пошуку прошиваємо з адресами, що були: це не причина зупинятися
+            found = detect_devices(mt, ports, hints=hints)
+        except Exception as exc:  # пошук зламався — вирішує людина: шукати ще раз чи прошити з адресами, що були
             found = {}
-            print(T(f"  пристрої не знайшов ({exc}) — лишаю адреси, що були",
-                    f"  could not look for the devices ({exc}) - keeping the previous addresses"))
+            print(T(f"  пристрої не знайшов ({exc})", f"  could not look for the devices ({exc})"))
+        # Не знайдено й немає адреси з минулої прошивки: роутер вів би тунель у нікуди, а приймальний тест цього не бачив
+        missing = [h for h in A.DEVICES if h not in found and h not in robot.devices]
+        via = "tunnel" if args.tunnel else "bench"
+        scan_path = r.robot_dir(robot) / "devices.json"
+        if missing and not args.allow_missing:
+            save_device_scan(scan_path, robot, ports, found, stopped=True, via=via)
+            names =", ".join(f"{T(*DEVICE_LABELS[h])} ({ports.get(h)})" for h in missing)
+            print(T(f"\nРОУТЕР НЕ ПРОШИТО: не знайдено {names}. Перевірте живлення й кабелі цих пристроїв і запустіть ще раз. "
+                    f"Прошити без них: --allow-missing (у майстрі — «Прошити без них»); тоді через тунель їх не буде видно",
+                    f"\nTHE ROUTER IS NOT FLASHED: {names} not found. Check the power and cables of these devices and run again. "
+                    f"To flash without them: --allow-missing (in the wizard - \"Flash without them\"); they are then not "
+                    f"visible through the tunnel"))
+            return EXIT_DEVICES_MISSING
+        save_device_scan(scan_path, robot, ports, found, stopped=False, via=via)
         before = dict(robot.devices)
         inv.set_devices(robot.id, {**robot.devices, **found})
         if robot.devices != before:
@@ -158,7 +209,8 @@ def cmd_bench_mikrotik(args) -> int:
     # На стенді після скидання роутер на 192.168.88.1; через Starlink — на тій самій адресі (DHCP Starlink за MAC).
     # Роутер у режимі CAP чи зі старим конфігом прошили за чужою адресою, а ноутбук у його порту 2–5 —
     # тоді після скидання ноутбук уже в br-lan і бачить роутер на 192.168.88.1
-    back = [BENCH_HOST] if ipaddress.ip_address(host) in A.LAN else [host, BENCH_HOST]
+    # Через тунель роутер повертається на ту саму адресу, щойно підніметься тунель майданчика
+    back = [host] if args.tunnel else [BENCH_HOST] if ipaddress.ip_address(host) in A.LAN else [host, BENCH_HOST]
     with wait_for(back, password) as mt:
         got = mt.fingerprint()
         if got != fp:
@@ -401,6 +453,11 @@ def build_parser() -> argparse.ArgumentParser:
                                                     "current admin password (factory one is on the label)"))
     s.add_argument("--host", help=T("адреса роутера (типово знаходиться сама, інакше 192.168.88.1)",
                                     "router address (found automatically by default, else 192.168.88.1)"))
+    s.add_argument("--tunnel", action="store_true", help=T(
+        "перепрошити вже прошитий НРК без кабелю — через тунель пілота-власника (hub)",
+        "reflash an already flashed UGV without a cable - through the tunnel of the owner pilot (hub)"))
+    s.add_argument("--allow-missing", action="store_true", help=T(
+        "прошити, навіть якщо не всі камери й ФК знайшлися", "flash even if not all cameras and the FC were found"))
     s.set_defaults(fn=cmd_bench_mikrotik)
     s = bench.add_parser("find", help=T("знайти роутери MikroTik у мережі (MAC, модель, IP)",
                                         "find MikroTik routers on the network (MAC, model, IP)"))

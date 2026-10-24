@@ -126,6 +126,12 @@ def update_ini(text: str, values: dict[str, dict[str, object]]) -> str:
     return newline.join(out) + newline
 
 
+def over_tcp(url: str) -> str:
+    """rtspt:// — кадри йдуть тим самим TCP-з'єднанням RTSP. Через Starlink і тунель RTP по UDP до Termite
+    не доходить, а сам на TCP він не перемикається (QGroundControl і VLC перемикаються) — екран лишався чорним."""
+    return "rtspt://" + url[len("rtsp://"):] if url.startswith("rtsp://") else url
+
+
 def camera_values(streams: list[dict]) -> dict[str, dict[str, object]]:
     values: dict[str, dict[str, object]] = {
         "TermitVideo": {"videoSource": "RTSP Video Stream", "streamEnabled": True, "lowLatencyMode": True},
@@ -134,7 +140,7 @@ def camera_values(streams: list[dict]) -> dict[str, dict[str, object]]:
         if s["cam"] in CAMERA_SECTIONS:
             values[CAMERA_SECTIONS[s["cam"]]] = {
                 "isEnabled": True, "visibleName": CAMERA_NAMES[s["cam"]],
-                "rtspUrl": s["rtsp"], "secondaryRtspUrl": s.get("rtsp2") or s["rtsp"],
+                "rtspUrl": over_tcp(s["rtsp"]), "secondaryRtspUrl": over_tcp(s.get("rtsp2") or s["rtsp"]),
             }
     return values
 

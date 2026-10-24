@@ -319,3 +319,40 @@ def test_give_hidden_in_the_built_app(simple_ui, monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.delenv("FLEET_EXPERIMENTAL", raising=False)
     assert json.loads(call(simple_ui, "/api/simple")[1])["features"] == {"give": False}
+
+
+def test_missing_fleet_exe_is_explained(simple_ui, monkeypatch, tmp_path):
+    """fleet.exe немає поруч (архів не розпаковано, антивірус): зрозуміла помилка замість «Failed to fetch»."""
+    import sys
+
+    from fleet import ui
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "UGV Quick Setup.exe"))  # fleet.exe поруч немає
+    status, body = call(simple_ui, "/api/run", {"args": ["check"]})
+    error = json.loads(body)["error"]
+    assert status == 500 and "fleet.exe" in error and "антивірус" in error
+    assert ui.fleet_command() == [str(tmp_path / "fleet.exe")]
+
+
+def test_unexpected_error_is_answered(simple_ui, monkeypatch):
+    """Будь-яка непередбачена помилка сервера майстра — відповідь з поясненням, а не обірване з'єднання."""
+    from fleet import ui
+
+    def boom(root):
+        raise KeyError("oops")
+
+    monkeypatch.setattr(ui, "simple_state", boom)
+    status, body = call(simple_ui, "/api/simple")
+    assert status == 500 and "внутрішня помилка програми: KeyError" in json.loads(body)["error"]
+
+
+def test_job_that_cannot_start_explains_why(simple_ui, monkeypatch):
+    """fleet.exe немає поруч або його заблокував антивірус: вікно отримує пояснення, а не обірвану відповідь."""
+    from fleet import ui
+
+    monkeypatch.setattr(ui, "fleet_command", lambda: [r"C:\nope\fleet.exe"])
+    status, body = call(simple_ui, "/api/run", {"args": ["check"]})
+    assert status == 500 and "не вдалося запустити" in json.loads(body)["error"]
+    status, _ = call(simple_ui, "/api/simple")  # сервер живий і відповідає далі
+    assert status == 200

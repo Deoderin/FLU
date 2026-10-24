@@ -32,8 +32,9 @@ def test_cameras_written_other_settings_kept(tmp_path):
     assert 'firstRunPromptIdsShown="1,2"' in text and "distanceUnits=1" in text and "aspectRatio=1.777777" in text
     cam1 = text.split("[TermitCamera1]")[1].split("[")[0]
     assert "isEnabled=true" in cam1 and "rtsp://old" not in cam1 and "visibleName=front" in cam1
-    assert 'rtspUrl="rtsp://admin:a12345677@10.150.16.24:554/cam/realmonitor?channel=1&subtype=0"' in cam1
-    assert "subtype=1" in cam1.split("secondaryRtspUrl=")[1]
+    # rtspt:// - відео по TCP: через тунель RTP по UDP до Termite не доходить, а сам на TCP він не перемикається
+    assert 'rtspUrl="rtspt://admin:a12345677@10.150.16.24:554/cam/realmonitor?channel=1&subtype=0"' in cam1
+    assert cam1.split("secondaryRtspUrl=")[1].startswith('"rtspt://') and "subtype=1" in cam1
     assert "[TermitCamera2]" in text and "visibleName=back" in text and "lowLatencyMode=true" in text
     assert text.count("[TermitVideo]") == 1 and text.count("videoSource=") == 1
     assert update_ini(text, {}) == text  # повторний запис нічого не ламає

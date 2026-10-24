@@ -20,6 +20,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 import urllib.request
 import uuid
 import webbrowser
@@ -77,6 +78,10 @@ def ui_log(root: Path, text: str) -> None:
         f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {text}\n")
 
 
+class JobError(Exception):
+    """Команду не вдалося навіть запустити (немає fleet.exe, антивірус тощо)."""
+
+
 class Job:
     """Команда fleet в окремому процесі; вивід накопичується, поки вона йде,
     і паралельно пишеться в журнал build/logs/<час>-<команда>.log."""
@@ -96,11 +101,23 @@ class Job:
         self._log.write(f"# {time.strftime('%Y-%m-%d %H:%M:%S')}  {self.shown}\n# fleet {__version__}, Python {sys.version.split()[0]}\n\n")
         env = {**os.environ, "FLEET_ROOT": str(root), "FLEET_LANG": lang,
                "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
-        self.proc = subprocess.Popen(
-            [*fleet_command(), *args], cwd=root if getattr(sys, "frozen", False) else PKG_PARENT, env=env,
-            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
-            errors="replace", creationflags=NO_WINDOW,  # без чорного вікна консолі
-        )
+        cmd = [*fleet_command(), *args]
+        try:
+            self.proc = subprocess.Popen(
+                cmd, cwd=root if getattr(sys, "frozen", False) else PKG_PARENT, env=env,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                errors="replace", creationflags=NO_WINDOW,  # без чорного вікна консолі
+            )
+        except OSError as exc:  # fleet.exe немає поруч або його заблокував антивірус
+            hint = T(" Перевірте, що fleet.exe лежить поруч із «UGV Quick Setup.exe» (архів розпаковано повністю) "
+                     "і що антивірус його не видалив і не заблокував: додайте теку програми у винятки.",
+                     " Check that fleet.exe is next to \"UGV Quick Setup.exe\" (the archive is fully extracted) "
+                     "and that the antivirus did not remove or block it: add the program folder to its exclusions.")
+            message = T(f"не вдалося запустити {cmd[0]}: {exc}.", f"could not start {cmd[0]}: {exc}.") + (
+                hint if getattr(sys, "frozen", False) else "")
+            self._log.write(f"{message}\n")
+            self._log.close()
+            raise JobError(message) from None
         threading.Thread(target=self._pump, daemon=True).start()
 
     def _pump(self) -> None:
@@ -174,7 +191,16 @@ def robot_row(root: Path, inv: Inventory, r) -> dict:
         "qgc": qgc,
         "cameras": renderer.camera_streams(r) if site else [],
         "report": latest_report(root, r.name),
+        "scan": device_scan(rdir),
     }
+
+
+def device_scan(rdir: Path) -> dict | None:
+    """Кого знайшла остання прошивка (devices.json від fleet bench mikrotik)."""
+    try:
+        return json.loads((rdir / "devices.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def build_state(root: Path) -> dict:
@@ -386,7 +412,27 @@ class Handler(BaseHTTPRequestHandler):
     def _job(self) -> dict | None:
         return self.server.current.to_dict() if self.server.current else None
 
+    def _safely(self, handler) -> None:
+        """Непередбачена помилка не обриває відповідь: у вікні це було б лише «Failed to fetch» без пояснень."""
+        try:
+            handler()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass  # вікно саме закрило з'єднання
+        except Exception as exc:
+            ui_log(self.server.root, f"{self.command} {self.path}: ERROR {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+            try:
+                self._error(500, T(f"внутрішня помилка програми: {type(exc).__name__}: {exc} (подробиці — у build/logs/ui.log)",
+                                   f"internal program error: {type(exc).__name__}: {exc} (details in build/logs/ui.log)"))
+            except OSError:
+                pass
+
     def do_GET(self) -> None:
+        self._safely(self._do_get)
+
+    def do_POST(self) -> None:
+        self._safely(self._do_post)
+
+    def _do_get(self) -> None:
         if not self._prepare():
             return
         url = urlparse(self.path)
@@ -415,7 +461,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(404, str(exc))
         return self._error(404, T("немає такої сторінки", "no such page"))
 
-    def do_POST(self) -> None:
+    def _do_post(self) -> None:
         if not self._prepare():
             return
         if self.headers.get("X-Fleet") != "1":
@@ -436,6 +482,9 @@ class Handler(BaseHTTPRequestHandler):
                 job = self.server.start(args)
             except RuntimeError as exc:
                 return self._error(409, str(exc))
+            except JobError as exc:
+                ui_log(root, f"run: fleet {' '.join(mask_args(args))}: ERROR {exc}")
+                return self._error(500, str(exc))
             ui_log(root, f"run: {job.shown} -> {job.log_rel}")
             return self._json(job.to_dict())
         if url.path == "/api/stop":

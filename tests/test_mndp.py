@@ -139,6 +139,27 @@ def test_reset_not_started_without_file(monkeypatch):
     assert not any(c.startswith("/system reset-configuration") for c in router.commands)
 
 
+def test_reset_retried_until_routeros_accepts_file(monkeypatch):
+    """RouterOS 7.20: файл уже в /file, а run-after-reset кілька секунд відповідає «input does not match»."""
+    monkeypatch.setattr(mikrotik, "time", Clock())
+    router = FakeRouter(appears_after=1)
+    refusals = iter([True, True])
+
+    def run(command, **kwargs):
+        router.commands.append(command)
+        if command.startswith("/system reset-configuration") and next(refusals, False):
+            raise MikroTikError("input does not match any value of run-after-reset (/system/reset-configuration (run-after-reset); line 1)")
+        return ""
+
+    router.run = run
+    mikrotik.apply_full_config(router, None)
+    assert sum(c.startswith("/system reset-configuration") for c in router.commands) == 3  # дві відмови, третя спроба пройшла
+
+    refusals = iter([True] * 100)  # файл так і не прийнято: помилка зі списком файлів, а не нескінченні спроби
+    with pytest.raises(MikroTikError, match="Файли на роутері"):
+        mikrotik.apply_full_config(router, None)
+
+
 def test_flashed_ugv_found_over_starlink(monkeypatch):
     """Ноутбук у Wi-Fi того самого Starlink: кабелю немає, але прошитий НРК видно за його ім'ям."""
     monkeypatch.setattr(netcheck, "check_router_link", lambda adapters=None: {"status": "no_cable", "message": "кабелю немає"})

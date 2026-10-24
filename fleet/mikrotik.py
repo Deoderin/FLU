@@ -314,8 +314,14 @@ DEVICE_LABELS = {"cam1": ("передня камера", "front camera"), "cam2"
                  "fc": ("ФК", "FC")}
 IP_MAC_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\b")
 ADDRESS_RE = re.compile(r"(?<![-\w])address=([\d.]+)")
+CIDR_RE = re.compile(r"(?<![-\w])address=([\d.]+/\d+)")
+IFACE_RE = re.compile(r"(?<![-\w])interface=(\S+)")
 MAC_FIELD_RE = re.compile(r"\bmac-address=([0-9A-Fa-f:]{17})")
 NO_DEVICE_NETS = ("0.0.0.0/8", "169.254.0.0/16", "127.0.0.0/8")
+PROBE_COMMENT = "fleet-probe"  # тимчасові адреси роутера на час опиту; скидання конфігу їх однаково стирає
+PROBE_SECONDS = 12  # активний опит однієї мережі /24
+DEVICE_WAIT = 90    # скільки чекати пристрої з лінком, що ввімкнулися разом із роутером і ще вантажаться
+RESET_ATTEMPTS = 6  # скільки разів пробувати скидання, поки RouterOS не прийме щойно залитий файл (~15 с)
 
 
 def parse_bridge_hosts(text: str) -> dict[str, list[str]]:
@@ -343,8 +349,11 @@ def parse_ip_macs(text: str) -> dict[str, list[str]]:
 
 
 def pick_devices(ports: dict[str, str], hosts: dict[str, list[str]], ip_macs: dict[str, list[str]],
-                 own: set[str], log=print) -> dict[str, dict[str, str]]:
-    """Пристрій у порту cam1 / cam2 / fc і його адреса. Камери розрізняємо за портом, а не за адресою."""
+                 own: set[str], log=print, links: dict[str, bool] | None = None) -> dict[str, dict[str, str]]:
+    """Пристрій у порту cam1 / cam2 / fc і його адреса. Камери розрізняємо за портом, а не за адресою.
+
+    links — чи є лінк у порту (False — кабелю немає чи пристрій вимкнено), щоб сказати, чому порт порожній.
+    """
     def usable(ip: str) -> bool:
         addr = ipaddress.ip_address(ip)
         return ip not in own and not any(addr in ipaddress.ip_network(n) for n in NO_DEVICE_NETS)
@@ -354,6 +363,10 @@ def pick_devices(ports: dict[str, str], hosts: dict[str, list[str]], ip_macs: di
         port, label = ports.get(host), T(*DEVICE_LABELS[host])
         macs = hosts.get(port, [])
         pairs = [(mac, ip) for mac in macs for ip in ip_macs.get(mac, []) if usable(ip)]
+        if not macs and (links or {}).get(host) is False:
+            log(T(f"  {label} ({port}): у порту немає лінку — кабель не вставлено або пристрій без живлення",
+                  f"  {label} ({port}): no link on the port - the cable is out or the device has no power"))
+            continue
         if not macs:
             log(T(f"  {label} ({port}): у порту нічого не видно — лишаю адресу, що була",
                   f"  {label} ({port}): nothing on the port - keeping the previous address"))
@@ -380,24 +393,101 @@ def pick_devices(ports: dict[str, str], hosts: dict[str, list[str]], ip_macs: di
     return found
 
 
-def detect_devices(mt: MikroTik, ports: dict[str, str], log=print, scan_seconds: int = 10) -> dict[str, dict[str, str]]:
+def router_addresses(text: str) -> list[tuple[ipaddress.IPv4Interface, str]]:
+    """/ip address print terse: адреси роутера з префіксом і інтерфейсом."""
+    out = []
+    for line in text.splitlines():
+        cidr, iface = CIDR_RE.search(line), IFACE_RE.search(line)
+        if cidr and iface:
+            out.append((ipaddress.ip_interface(cidr[1]), iface[1]))
+    return out
+
+
+def probe_plan(bridge: str, addresses: list[tuple[ipaddress.IPv4Interface, str]], hints: list[str],
+               taken: set[str]) -> list[tuple[ipaddress.IPv4Network, str | None]]:
+    """Мережі /24, які опитуємо активно, і тимчасова адреса роутера в кожній (None — роутер уже в ній, на мосту).
+
+    Мережі, що вже є на інших інтерфейсах (Starlink на ether1, тунелі), не чіпаємо: тимчасова адреса на мосту
+    зламала б маршрут туди — а через тунель ми саме й прошиваємо.
+    """
+    plan: list[tuple[ipaddress.IPv4Network, str | None]] = []
+    for net in dict.fromkeys(ipaddress.ip_network(f"{ip}/24", strict=False) for ip in hints):
+        if not net.is_private or any(net.overlaps(ipaddress.ip_network(n)) for n in NO_DEVICE_NETS):
+            continue
+        if any(a.network.overlaps(net) for a, iface in addresses if iface != bridge):
+            continue
+        if any(a.network.overlaps(net) for a, iface in addresses if iface == bridge):
+            plan.append((net, None))
+            continue
+        # .1 — зазвичай шлюз старої бортової мережі, якого вже немає; інакше вільна з кінця мережі
+        temp = next((str(net.network_address + n) for n in (1, 254, 250, 240) if str(net.network_address + n) not in taken), None)
+        if temp:
+            plan.append((net, temp))
+    return plan
+
+
+def detect_devices(mt: MikroTik, ports: dict[str, str], log=print, scan_seconds: int = 10,
+                   hints: list[str] = (), wait_seconds: float = DEVICE_WAIT) -> dict[str, dict[str, str]]:
     """Хто стоїть у портах камер і ФК і на якій адресі — до прошивки, щоб роутер одразу вів тунель куди треба.
 
-    Адресу пристрою з чужої мережі (192.168.15.x) ARP роутера не знає, тому слухаємо мережу /tool ip-scan:
-    камери й адаптери ФК постійно щось шлють (ARP, мультикаст), і за 10 секунд їх видно.
+    Спершу слухаємо мережу (/tool ip-scan без адрес): так видно пристрої з будь-якої мережі, якщо вони щось шлють.
+    Але камера, яку ніхто не дивиться, може мовчати хвилинами. Тож тих, кого не почули, питаємо самі: роутер
+    бере тимчасову адресу в імовірній мережі (де вже знайшлися інші пристрої, адреси з минулої прошивки,
+    заводська мережа камер — hints) і опитує всі 254 адреси; на ARP пристрій відповідає, навіть коли мовчить.
+    Пристрої з лінком, що ще вантажаться (увімкнулися разом із роутером), чекаємо до wait_seconds.
     """
     bridge = mt.get(f"/interface bridge port get [find interface={ports['cam1']}] bridge")
     if not re.fullmatch(r"[\w.-]+", bridge):
         log(T(f"  порт {ports['cam1']} не в мості — пристрої не шукаю, лишаю адреси, що були",
               f"  port {ports['cam1']} is not in a bridge - not looking for devices, keeping the previous addresses"))
         return {}
-    log(T(f"  шукаю камери й ФК у портах роутера ({scan_seconds} с)...",
-          f"  looking for the cameras and FC on the router ports ({scan_seconds} s)..."))
-    hosts = parse_bridge_hosts(mt.run("/interface bridge host print terse where !local", check=False))
-    scan = mt.run(f"/tool ip-scan interface={bridge} duration={scan_seconds}s", check=False, timeout=scan_seconds + 30)
-    ip_macs = parse_ip_macs(scan + "\n" + mt.run("/ip arp print terse", check=False))
-    own = set(ADDRESS_RE.findall(mt.run("/ip address print terse", check=False)))
-    return pick_devices(ports, hosts, ip_macs, own, log=log)
+    log(T("  шукаю камери й ФК у портах роутера...", "  looking for the cameras and FC on the router ports..."))
+    mt.run(f"/ip address remove [find comment={PROBE_COMMENT}]", check=False)  # лишки обірваного минулого пошуку
+    deadline = time.monotonic() + wait_seconds
+    heard = hosts_text = ""
+    links: dict[str, bool] = {}
+    quiet = lambda *_: None  # noqa: E731 — проміжні результати не друкуємо
+
+    def look() -> tuple[dict, dict, set[str]]:
+        nonlocal hosts_text
+        hosts_text += mt.run("/interface bridge host print terse where !local", check=False)  # після опиту: хто озвався
+        ip_macs = parse_ip_macs(heard + "\n" + mt.run("/ip arp print terse", check=False))
+        own = set(ADDRESS_RE.findall(mt.run("/ip address print terse", check=False)))
+        return parse_bridge_hosts(hosts_text), ip_macs, own
+
+    while True:
+        heard += mt.run(f"/tool ip-scan interface={bridge} duration={scan_seconds}s", check=False, timeout=scan_seconds + 30)
+        hosts, ip_macs, own = look()
+        found = pick_devices(ports, hosts, ip_macs, own, log=quiet)
+        if len(found) == len(A.DEVICES):
+            break
+        # Мережі, де варто шукати решту: де вже стоять пристрої в портах, де вони були минулого разу, заводські
+        near = [ip for host in A.DEVICES for mac in hosts.get(ports.get(host), []) for ip in ip_macs.get(mac, [])]
+        taken = {ip for ips in ip_macs.values() for ip in ips} | set(hints)
+        addresses = router_addresses(mt.run("/ip address print terse", check=False))
+        plan = probe_plan(bridge, addresses, [*near, *hints, str(A.lan_ip("router"))], taken)
+        if plan:
+            log(T(f"  не всі озвалися — опитую мережі {', '.join(str(n) for n, _ in plan)}...",
+                  f"  not everyone answered - probing the networks {', '.join(str(n) for n, _ in plan)}..."))
+        try:
+            for net, temp in plan:
+                if temp:
+                    mt.run(f"/ip address add address={temp}/24 interface={bridge} comment={PROBE_COMMENT}", check=False)
+                heard += mt.run(f"/tool ip-scan interface={bridge} address-range={net} duration={PROBE_SECONDS}s",
+                                check=False, timeout=PROBE_SECONDS + 30)
+            hosts, ip_macs, own = look()  # тимчасові адреси теж у own: це адреси роутера, не пристроїв
+        finally:
+            if any(temp for _, temp in plan):
+                mt.run(f"/ip address remove [find comment={PROBE_COMMENT}]", check=False)
+        found = pick_devices(ports, hosts, ip_macs, own, log=quiet)
+        missing = [h for h in A.DEVICES if h not in found]
+        links = {h: mt.get(f"/interface get [find name={ports.get(h)}] running") == "true" for h in missing}
+        if not missing or time.monotonic() >= deadline or not any(links.values()):
+            break
+        names = ", ".join(T(*DEVICE_LABELS[h]) for h in missing if links[h])
+        log(T(f"  {names}: лінк є, а відповіді немає — мабуть, ще вантажиться, чекаю...",
+              f"  {names}: the link is up but no answer - probably still booting, waiting..."))
+    return pick_devices(ports, hosts, ip_macs, own, log=log, links=links)
 
 
 def apply_full_config(mt: MikroTik, rsc: Path) -> None:
@@ -405,16 +495,23 @@ def apply_full_config(mt: MikroTik, rsc: Path) -> None:
     remote = ("flash/" if mt.has_flash() else "") + "fleet-robot.rsc"
     mt.upload(rsc, remote)
     wait_for_file(mt, remote)
-    try:
-        mt.run(
-            f"/system reset-configuration no-defaults=yes skip-backup=yes run-after-reset={remote}",
-            timeout=15, stdin_text="y\n",
-        )
-    except (socket.timeout, paramiko.SSHException, EOFError, OSError):
-        pass  # з'єднання рветься через перезавантаження — це нормально
-    except MikroTikError as exc:
-        files = mt.run("/file print terse", check=False).strip()
-        raise MikroTikError(T(f"{exc}\nФайли на роутері:\n{files}", f"{exc}\nFiles on the router:\n{files}")) from None
+    # RouterOS 7.20: файл уже є в /file, а run-after-reset ще кілька секунд його не приймає
+    # («input does not match any value of run-after-reset») — чекаємо й пробуємо знову
+    for attempt in range(RESET_ATTEMPTS):
+        try:
+            mt.run(
+                f"/system reset-configuration no-defaults=yes skip-backup=yes run-after-reset={remote}",
+                timeout=15, stdin_text="y\n",
+            )
+            return
+        except (socket.timeout, paramiko.SSHException, EOFError, OSError):
+            return  # з'єднання рветься через перезавантаження — це нормально
+        except MikroTikError as exc:
+            if "run-after-reset" in str(exc) and attempt < RESET_ATTEMPTS - 1:
+                time.sleep(3)
+                continue
+            files = mt.run("/file print terse", check=False).strip()
+            raise MikroTikError(T(f"{exc}\nФайли на роутері:\n{files}", f"{exc}\nFiles on the router:\n{files}")) from None
 
 
 def wait_for(hosts: str | list[str], password: str, timeout: float = 300) -> MikroTik:

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 import time
 from dataclasses import asdict, dataclass
@@ -21,7 +22,7 @@ from . import fc
 from .i18n import T
 from .inventory import Inventory, Robot
 from .keystore import SecretStore
-from .mikrotik import connect_robot, drift
+from .mikrotik import MAC_FIELD_RE, connect_robot, drift
 from .params import diff
 from .render import Renderer
 
@@ -41,6 +42,9 @@ def label(key: str) -> str:
         "cam1": T("передня камера", "front camera"),
         "cam2": T("задня камера", "rear camera"),
         "cameras": T("камери", "cameras"),
+        "dev_cam1": T("передня камера на борту", "front camera on board"),
+        "dev_cam2": T("задня камера на борту", "rear camera on board"),
+        "dev_fc": T("адаптер ФК на борту", "FC adapter on board"),
         "mikrotik": "MikroTik",
         "mikrotik_config": T("MikroTik: конфіг", "MikroTik: config"),
         "site_tunnel": T("тунель майданчика", "site tunnel"),
@@ -211,6 +215,8 @@ class Acceptance:
                     f"відбиток {got}, очікувався {self.fingerprint}: конфіг застарів — перепрошийте (fleet bench mikrotik)",
                     f"fingerprint {got}, expected {self.fingerprint}: the config is outdated - reflash (fleet bench mikrotik)"))
 
+            self.check_devices(mt)
+
             age = mt.last_handshake(f"fleet-site:{self.site.name}")
             self.add("site_tunnel", "PASS" if age is not None and age < 180 else "FAIL",
                      T(f"handshake {age} с тому", f"handshake {age} s ago") if age is not None
@@ -231,6 +237,32 @@ class Acceptance:
                 out = mt.run(f"/interface lte monitor {wan['interface']} once", check=False)
                 signal = " ".join(line.strip() for line in out.splitlines() if line.strip().split(":")[0] in ("rsrp", "rsrq", "sinr"))
                 self.add("lte", "PASS" if signal else "WARN", signal or T("немає даних про сигнал", "no signal data"))
+
+    def check_devices(self, mt) -> None:
+        """Камери й адаптер ФК відповідають роутеру на тих адресах, куди він веде тунель.
+
+        Саме цього бракувало: роутер прошився, тунель працює, а пристрій, якого прошивка не знайшла, стоїть на
+        іншій адресі — і пілот бачить чорний екран. Пінгуємо з роутера; хто не відповідає на ping, але є в ARP,
+        у мережі є (деякі адаптери ICMP ігнорують).
+        """
+        robot, ports = self.robot, self.inv.platform(self.robot)["ports"]
+        for host in A.DEVICES:
+            ip = str(A.device_ip(robot, host))
+            outside = str(A.mapped_ip(self.site, robot.slot, host))
+            out = mt.run(f"/ping {ip} count=3", check=False, timeout=30)
+            received = re.findall(r"\breceived=(\d+)", out)
+            port = ports.get(host, "?").removeprefix("ether")
+            if received and int(received[-1]) > 0:
+                self.add(f"dev_{host}", "PASS", T(f"{outside} → {ip} відповідає", f"{outside} -> {ip} answers"))
+            elif MAC_FIELD_RE.search(mt.run(f"/ip arp print terse where address={ip}", check=False)):
+                self.add(f"dev_{host}", "PASS", T(f"{outside} → {ip}: у мережі є (ARP), на ping не відповідає",
+                                                  f"{outside} -> {ip}: on the network (ARP), does not answer ping"))
+            else:
+                self.add(f"dev_{host}", "FAIL", T(
+                    f"{ip} не відповідає: перевірте живлення й кабель у порту {port}. Якщо пристрій на іншій адресі — "
+                    f"перепрошийте роутер (крок 5): прошивка знайде його сама",
+                    f"{ip} does not answer: check the power and the cable in port {port}. If the device is on another "
+                    f"address - reflash the router (step 5): the flashing finds it itself"))
 
 
 def save_report(root: Path, robot: Robot, checks: list[Check]) -> Path:
