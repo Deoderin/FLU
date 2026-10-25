@@ -175,16 +175,21 @@ def admin_command(root: Path, action: str, serial: str | None = None, pilot: str
 
 
 def server_command(root: Path, args: list[str]) -> str:
-    """Одна команда для вставки на сервері: скрипт flu-hub.sh, стиснутий у base64, і його аргументи.
+    """Одна команда для вставки на сервері: скрипт flu-hub.sh, стиснутий у base64, і його аргументи."""
+    return packed_command(root / SCRIPT, args)
+
+
+def packed_command(path: Path, args: list[str]) -> str:
+    """Скрипт у один рядок для вставки в консоль: стиснутий у base64, з аргументами.
 
     Рядки-коментарі потрібні людям у репозиторії, а не серверу: без них команда коротша.
     Рядок довший за ~8 тис. символів обрізають деякі консолі (і Git Bash, коли його запускає Windows).
     """
-    lines = (root / SCRIPT).read_bytes().replace(b"\r\n", b"\n").decode().split("\n")
+    lines = path.read_bytes().replace(b"\r\n", b"\n").decode().split("\n")
     script = "\n".join(line for i, line in enumerate(lines) if i == 0 or not line.lstrip().startswith("#")).encode()
     payload = base64.b64encode(gzip.compress(script, mtime=0)).decode()
-    quoted = " ".join(f"'{a}'" for a in args)  # у значеннях немає апострофів: їх перевірено вище
-    return f"echo {payload} | base64 -d | gunzip > /tmp/flu-hub.sh && bash /tmp/flu-hub.sh {quoted}"
+    quoted = " ".join(f"'{a}'" for a in args)  # у значеннях немає апострофів: їх перевіряє той, хто викликає
+    return f"echo {payload} | base64 -d | gunzip > /tmp/{path.name} && bash /tmp/{path.name} {quoted}"
 
 
 # --- відповідь сервера -----------------------------------------------------------

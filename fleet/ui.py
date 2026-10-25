@@ -535,6 +535,13 @@ class Handler(BaseHTTPRequestHandler):
                 cmd = admin_command(root, act, serial=serial or None, pilot=pilot or None)
                 ui_log(root, f"admin-command: {act} serial={serial} pilot={pilot}")
                 return self._json({"command": cmd})
+            if url.path == "/api/simple/aws-command":
+                from .aws import public_ip, server_command
+                name, region = str(body.get("name") or "").strip(), str(body.get("region") or "").strip()
+                my_ip = (public_ip() or "") if body.get("ssh_here") else ""
+                cmd = server_command(root, name, region, my_ip)
+                ui_log(root, f"aws-command: {name} {region} ssh from {my_ip or '-'}")
+                return self._json({"command": cmd, "my_ip": my_ip, "ip_unknown": bool(body.get("ssh_here")) and not my_ip})
             if url.path == "/api/simple/termite":
                 from .render import Renderer
                 from .termite import write_cameras

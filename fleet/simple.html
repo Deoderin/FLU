@@ -18,7 +18,7 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  button, input, textarea { font: inherit; color: inherit; }
+  button, input, textarea, select { font: inherit; color: inherit; }
   a { color: var(--accent); }
   .muted { color: var(--muted); }
   .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
@@ -115,6 +115,19 @@ const I18N = {
     s1_btn: "Далі", s1_done: "Пілот {pilot} · НРК {serial} ({name})", s1_new: "Інший НРК або пілот",
     s1_hint: "Виберіть пілота, якому додаєте НРК, або створіть нового. У кожного пілота свій тунель WireGuard, а НРК бачить лише свій пілот.",
     s1_need: "Вкажіть ім'я і заводський номер НРК",
+    aws: "Сервер в AWS (якщо його ще немає)", aws_lead: "Один раз на новий сервер. Сервер уже є — переходьте до кроку 1.",
+    aws_open: "Отримати команду для створення сервера в AWS", aws_close: "Сховати",
+    aws_hint: "Увійдіть у консоль AWS (console.aws.amazon.com), угорі праворуч виберіть той самий регіон, що нижче, і відкрийте CloudShell — значок >_ угорі. Скопіюйте команду, клацніть у вікні CloudShell правою кнопкою → Paste і натисніть Enter. За 2–3 хвилини з'явиться ГОТОВО з адресою сервера.",
+    aws_name: "Назва сервера", aws_region: "Регіон AWS", aws_r_north: "Стокгольм (рекомендовано)", aws_r_central: "Франкфурт",
+    aws_ssh: "Дозволити SSH з цього ноутбука — для кнопки «Відкрити термінал сервера» в кроці 2",
+    aws_btn: "Скопіювати команду для AWS",
+    aws_copied: "Скопійовано ✓ Вставте в CloudShell і натисніть Enter.",
+    aws_copy_fail: "Не вдалося скопіювати — виділіть команду нижче й скопіюйте вручну.",
+    aws_ip: "SSH дозволено з адреси цього ноутбука {ip}. Якщо адреса зміниться (Starlink іноді її міняє), додайте нову: EC2 → Security groups → {name}-sg → Edit inbound rules → SSH, My IP.",
+    aws_noip: "Адресу цього ноутбука дізнатися не вдалося: SSH буде лише через кнопку Connect у консолі AWS. Додати свою адресу пізніше: EC2 → Security groups → {name}-sg → Edit inbound rules → SSH, My IP.",
+    aws_connect_only: "SSH з ноутбука не дозволено: на сервер заходьте кнопкою Connect у консолі AWS.",
+    aws_key: "Наприкінці команда покаже, як забрати ключ: CloudShell → Actions → Download file, у поле — повний шлях /home/cloudshell-user/<назва>-key.pem; файл буде в «Завантаженнях». Далі крок 2: адреса з рядка ГОТОВО, користувач ubuntu, «Вибрати файл ключа».",
+    aws_taken: "Якщо команда напише, що назва зайнята, — змініть назву (наприклад, NRK-Server-2) і скопіюйте знову. Якщо AWS ще перевіряє новий акаунт (verification), CloudShell не відкриється, доки перевірка не завершиться.",
     s2: "Сервер: вставте команду",
     s2a: "1. Відкрийте сервер", host: "Адреса сервера", host_ph: "IP-адреса сервера з панелі хостингу", user: "Користувач",
     s2a_btn: "Відкрити термінал сервера", s2a_hint: "Відкриється чорне вікно. Якщо спитає «Are you sure you want to continue connecting» — надрукуйте yes і Enter. Потім введіть пароль сервера і Enter (символів пароля не видно — так і має бути).",
@@ -122,7 +135,7 @@ const I18N = {
     key: "Файл ключа .pem — лише для AWS", key_pick: "Вибрати файл ключа…", key_change: "Інший файл…",
     key_none: "не вибрано — для серверів не з AWS не потрібен", key_chosen: "вибрано: {name}", key_clear: "прибрати",
     key_hint: "Лише для серверів AWS (Amazon): там вхід не за паролем, а за файлом ключа .pem, який ви завантажили під час створення сервера. Виберіть його один раз — програма запам'ятає ключ для цього сервера. Користувач на AWS — ubuntu, пароль не знадобиться.",
-    key_fw: "На AWS відкрийте ще й порт: EC2 → ваш сервер → Security → Security group → Edit inbound rules → Add rule: Custom UDP, порт 51820 (або той, що назве сервер), джерело 0.0.0.0/0.",
+    key_fw: "На AWS має бути відкритий порт (сервер, створений командою вгорі, уже має його): EC2 → ваш сервер → Security → Security group → Edit inbound rules → Add rule: Custom UDP, порт 51820 (або той, що назве сервер), джерело 0.0.0.0/0.",
     s2b: "2. Скопіюйте команду й вставте її на сервері", s2b_btn: "Скопіювати команду", copied: "Скопійовано ✓",
     s2b_hint: "У вікні сервера клацніть правою кнопкою миші — команда вставиться — і натисніть Enter. Зачекайте до хвилини.",
     s2b_both: "Команда сама розбереться: якщо WireGuard на сервері ще немає — встановить, якщо вже є — лише додасть пілота й НРК. НРК бачитиме лише цей пілот.",
@@ -191,6 +204,19 @@ const I18N = {
     s1_btn: "Next", s1_done: "Pilot {pilot} · UGV {serial} ({name})", s1_new: "Another UGV or pilot",
     s1_hint: "Choose the pilot you add the UGV to, or create a new one. Each pilot has an own WireGuard tunnel, and a UGV is visible only to its pilot.",
     s1_need: "Enter your name and the UGV serial number",
+    aws: "Server in AWS (if there is none yet)", aws_lead: "Once per new server. Already have a server - go to step 1.",
+    aws_open: "Get the command that creates a server in AWS", aws_close: "Hide",
+    aws_hint: "Sign in to the AWS console (console.aws.amazon.com), choose the same region as below in the top right corner and open CloudShell - the >_ icon at the top. Copy the command, right-click in the CloudShell window → Paste and press Enter. In 2-3 minutes it prints ГОТОВО (done) with the server address.",
+    aws_name: "Server name", aws_region: "AWS region", aws_r_north: "Stockholm (recommended)", aws_r_central: "Frankfurt",
+    aws_ssh: "Allow SSH from this laptop - for the \"Open server terminal\" button in step 2",
+    aws_btn: "Copy the command for AWS",
+    aws_copied: "Copied ✓ Paste it into CloudShell and press Enter.",
+    aws_copy_fail: "Could not copy - select the command below and copy it by hand.",
+    aws_ip: "SSH is allowed from this laptop's address {ip}. If the address changes (Starlink changes it sometimes), add the new one: EC2 → Security groups → {name}-sg → Edit inbound rules → SSH, My IP.",
+    aws_noip: "Could not find out this laptop's address: SSH works only through the Connect button in the AWS console. To add your address later: EC2 → Security groups → {name}-sg → Edit inbound rules → SSH, My IP.",
+    aws_connect_only: "SSH from the laptop is not allowed: log in to the server with the Connect button in the AWS console.",
+    aws_key: "At the end the command shows how to get the key: CloudShell → Actions → Download file, in the field - the full path /home/cloudshell-user/<name>-key.pem; the file lands in Downloads. Then step 2: the address from the ГОТОВО line, user ubuntu, \"Choose the key file\".",
+    aws_taken: "If the command says the name is taken, change the name (e.g. NRK-Server-2) and copy again. While AWS is still verifying a new account, CloudShell does not open until the verification is complete.",
     s2: "Server: paste the command",
     s2a: "1. Open the server", host: "Server address", host_ph: "server IP from the hosting panel", user: "User",
     s2a_btn: "Open server terminal", s2a_hint: "A black window opens. If it asks \"Are you sure you want to continue connecting\", type yes and Enter. Then type the server password and Enter (the password is not shown - that is expected).",
@@ -198,7 +224,7 @@ const I18N = {
     key: ".pem key file - AWS only", key_pick: "Choose the key file…", key_change: "Another file…",
     key_none: "not chosen - not needed for servers outside AWS", key_chosen: "chosen: {name}", key_clear: "remove",
     key_hint: "Only for AWS (Amazon) servers: they log in with the .pem key file you downloaded when creating the server, not with a password. Choose it once - the program remembers the key for this server. The AWS user is ubuntu, no password is needed.",
-    key_fw: "On AWS also open the port: EC2 → your server → Security → Security group → Edit inbound rules → Add rule: Custom UDP, port 51820 (or the one the server names), source 0.0.0.0/0.",
+    key_fw: "On AWS the port must be open (a server created with the command at the top already has it): EC2 → your server → Security → Security group → Edit inbound rules → Add rule: Custom UDP, port 51820 (or the one the server names), source 0.0.0.0/0.",
     s2b: "2. Copy the command and paste it on the server", s2b_btn: "Copy command", copied: "Copied ✓",
     s2b_hint: "Right-click in the server window - the command is pasted - and press Enter. Wait up to a minute.",
     s2b_both: "The command figures it out itself: if the server has no WireGuard yet, it installs it; if it has, it only adds the pilot and the UGV. Only this pilot will see the UGV.",
@@ -432,6 +458,40 @@ function render() {
   const done5 = Boolean(done3 && robot.baseline);
   const stateOf = (done, ready) => (done ? "done" : ready ? "now" : "locked");
   const steps = [];
+
+  // 0. Сервер в AWS: команда для CloudShell створює сервер із ключем, правилами доступу й постійною адресою
+  const awsToggle = h("button", { class: "link", onclick: () => { inputs.awsOpen = inputs.awsOpen ? "" : "1"; render(); } },
+    inputs.awsOpen ? t("aws_close") : t("aws_open"));
+  if (!inputs.awsOpen) {
+    steps.push(card(0, "", t("aws"), h("p", { class: "hint" }, t("aws_lead")), h("div", {}, awsToggle)));
+  } else {
+    const [lan, ian] = field("awsName", t("aws_name"), { value: store.get("fleet-aws-name") || "NRK-Server-1" });
+    const region = h("select", {}, h("option", { value: "eu-north-1" }, t("aws_r_north")), h("option", { value: "eu-central-1" }, t("aws_r_central")));
+    region.value = inputs.awsRegion || store.get("fleet-aws-region") || "eu-north-1";
+    region.addEventListener("change", () => (inputs.awsRegion = region.value));
+    const sshHere = h("input", { type: "checkbox" });
+    sshHere.checked = inputs.awsSsh !== "0";
+    sshHere.addEventListener("change", () => (inputs.awsSsh = sshHere.checked ? "1" : "0"));
+    steps.push(card(0, "", t("aws"),
+      h("p", { class: "hint" }, t("aws_hint")),
+      h("div", { class: "row" }, lan, h("label", { class: "field" }, t("aws_region"), region)),
+      h("label", { class: "hint", style: "display: flex; gap: 8px; align-items: center" }, sshHere, t("aws_ssh")),
+      h("div", { class: "row", style: "align-items: center" }, btn(t("aws_btn"), async () => {
+        const name = ian.value.trim();
+        try {
+          const res = await api("/api/simple/aws-command", { name, region: region.value, ssh_here: sshHere.checked });
+          store.set("fleet-aws-name", name); store.set("fleet-aws-region", region.value);
+          const ok = await copyText(res.command);
+          inputs.awsCmd = ok ? "" : res.command;
+          const ssh = res.my_ip ? t("aws_ip", { ip: res.my_ip, name }) : res.ip_unknown ? t("aws_noip", { name }) : t("aws_connect_only");
+          message[0] = [[ok ? t("aws_copied") : t("aws_copy_fail"), ssh].join("\n"), ok && !res.ip_unknown ? "ok" : "warn"];
+        } catch (e) { message[0] = [e.message, "bad"]; }
+        render();
+      }, { primary: true }), awsToggle),
+      inputs.awsCmd && h("pre", { class: "code" }, inputs.awsCmd),
+      h("p", { class: "hint" }, t("aws_key")),
+      h("p", { class: "hint" }, t("aws_taken"))));
+  }
 
   // 1. Пілот і НРК
   if (done1 && !inputs.edit1) {

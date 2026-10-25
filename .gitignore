@@ -16,3 +16,6 @@ __pycache__/
 inventory/operators.yaml
 inventory/robots.yaml
 inventory/sites.yaml
+
+# Локальні налаштування редактора — лише на цьому ноутбуці
+.claude/
