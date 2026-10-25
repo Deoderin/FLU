@@ -54,18 +54,28 @@ case $MODE in
   remove-robot) [[ $ROBOT_SERIAL =~ $SERIAL_RE ]] || die "некоректний номер НРК: $ROBOT_SERIAL" ;;
 esac
 
+# Коментарі тут — окремими рядками: програма їх вирізає, і команда для сервера коротша.
+#   DB      — тип  номер  ім'я  ключ  [пілот-власник — для НРК]
+#   ACL     — правила iptables: який пілот до якого НРК
+#   AA_*    — профілі AppArmor (розділ 5)
+#   TUNNEL  — .1 — сервер, НРК зі слотом N — .(1+N);  PILOTS — пілот з номером K — .K
+#   LANS3   — мережі НРК: 10.150.16.0/20, по /28 на НРК
+#   MTU     — як на роутерах НРК і в тунелях пілотів (fleet/render.py)
+#   MAV_PORT, *_HOST — ФК і камери в блоці НРК, як у fleet/addressing.py (MAPPED) і base/platforms.yaml
 DIR=${FLU_WG_DIR:-/etc/wireguard}
 IFACE=flu
 CONF=$DIR/$IFACE.conf
 KEYFILE=$DIR/$IFACE.key
-DB=$DIR/flu-peers.tsv   # тип  номер  ім'я  ключ  [пілот-власник — для НРК]
-ACL=$DIR/$IFACE-acl.sh  # правила iptables: який пілот до якого НРК
-TUNNEL=10.150.0         # .1 — сервер, НРК зі слотом N — .(1+N)
-PILOTS=10.150.1         # пілот з номером K — .K
-LANS3=16                # мережі НРК: 10.150.16.0/20, по /28 на НРК
+DB=$DIR/flu-peers.tsv
+ACL=$DIR/$IFACE-acl.sh
+AA_DIR=/etc/apparmor.d AA_LOADED=/sys/kernel/security/apparmor/profiles
+[ -z "${FLU_TEST:-}" ] || { AA_DIR=$DIR/apparmor.d AA_LOADED=$DIR/apparmor-profiles; }
+TUNNEL=10.150.0
+PILOTS=10.150.1
+LANS3=16
 MAX=250
-MTU=1280                # як на роутерах НРК і в тунелях пілотів (fleet/render.py)
-MAV_PORT=5760           # ФК і камери в блоці НРК — як у fleet/addressing.py (MAPPED) і base/platforms.yaml
+MTU=1280
+MAV_PORT=5760
 FC_HOST=2 CAM1_HOST=8 CAM2_HOST=9
 
 # Службові команди міняють лише наявний сервер: без бази й ключа сервера їм нема з чим працювати
@@ -259,15 +269,38 @@ sync_routes() {
   done
 }
 
+# Ubuntu 26.04 і новіші мають профіль AppArmor для wg-quick, який не дає PostUp ні увімкнути пересилання
+# (sysctl net.ipv4.ip_forward: «permission denied»), ні запустити правила доступу (sh: «Permission denied»):
+# тунель піднімається й одразу падає. Вимикаємо цей профіль — wg-quick працює, як у 24.04, де його немає.
+# Посилання в disable/ — щоб профіль не повернувся після перезавантаження.
+apparmor_off() {
+  [ -e "$AA_DIR/wg-quick" ] || return 0
+  mkdir -p "$AA_DIR/disable"
+  ln -sf "$AA_DIR/wg-quick" "$AA_DIR/disable/wg-quick"
+  # Завантажений профіль зветься «wg-quick (enforce)» або «/usr/bin/wg-quick (enforce)»
+  grep -q 'wg-quick' "$AA_LOADED" 2>/dev/null || return 0
+  say "вимикаю профіль AppArmor для wg-quick (Ubuntu 26.04+): з ним тунель не запускається"
+  apparmor_parser -R "$AA_DIR/wg-quick" >/dev/null 2>&1 ||
+    die "не вдалося вимкнути профіль AppArmor: sudo apparmor_parser -R $AA_DIR/wg-quick і команду ще раз"
+}
+apparmor_off
+
 if [ -z "${FLU_TEST:-}" ]; then
   if ip link show "$IFACE" >/dev/null 2>&1; then
-    wg syncconf "$IFACE" <(wg-quick strip "$IFACE")   # нові піри без розриву наявних тунелів
-    ip link set dev "$IFACE" mtu "$MTU"                # syncconf MTU не міняє, а тунелі від цього не рвуться
-    sync_routes                                        # і маршрутів до нових пірів теж не ставить
-    sh "$ACL"                                          # і PostUp теж: доступ пілотів оновлюємо самі
+    # Нові піри без розриву наявних тунелів. syncconf не міняє MTU (тунелі від цього не рвуться), не ставить
+    # маршрутів до нових пірів і не виконує PostUp — тож доступ пілотів оновлюємо самі
+    wg syncconf "$IFACE" <(wg-quick strip "$IFACE")
+    ip link set dev "$IFACE" mtu "$MTU"
+    sync_routes
+    sh "$ACL"
   else
-    systemctl enable --now "wg-quick@$IFACE" >/dev/null 2>&1 || wg-quick up "$IFACE" >/dev/null
+    # Служба могла впасти ще до вимкнення профілю: тоді піднімаємо тунель напряму, а після перезавантаження служба вже зможе
+    systemctl enable --now "wg-quick@$IFACE" >/dev/null 2>&1 || wg-quick up "$IFACE" >/dev/null || true
   fi
+  # Перевіряємо, а не віримо: без тунелю чи пересилання НРК і пілоти одне одного не побачать
+  ip link show "$IFACE" >/dev/null 2>&1 || die "тунель $IFACE не піднявся, причина у виводі вище (sudo journalctl -u wg-quick@$IFACE)"
+  [ "$(sysctl -n net.ipv4.ip_forward 2>/dev/null)" = 1 ] || sysctl -q -w net.ipv4.ip_forward=1 ||
+    die "не вмикається net.ipv4.ip_forward: пілоти не побачать НРК"
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
     ufw allow "$PORT/udp" >/dev/null
   fi

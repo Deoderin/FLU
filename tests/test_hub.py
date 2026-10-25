@@ -157,6 +157,29 @@ def test_response_for_another_laptop_rejected(fresh, tmp_path):
         apply_response(fresh, out)
 
 
+@needs_bash
+def test_apparmor_profile_of_wg_quick_is_turned_off(fresh, tmp_path):
+    """Ubuntu 26.04: профіль AppArmor для wg-quick забороняє PostUp (sysctl, sh) — тунель падав одразу після підняття."""
+    server = FakeServer(tmp_path)
+    aa = server.dir / "apparmor.d"
+    aa.mkdir(parents=True)
+    (aa / "wg-quick").write_text("profile wg-quick /usr/bin/wg-quick {}\n")
+    (server.dir / "apparmor-profiles").write_text("wg-quick (enforce)\nnvidia_modprobe (enforce)\n")
+    calls = tmp_path / "apparmor_parser.log"
+    (server.stub / "apparmor_parser").write_bytes(f'#!/usr/bin/env bash\necho "$*" >> "{calls.as_posix()}"\n'.encode())
+
+    out = server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    assert "вимикаю профіль AppArmor для wg-quick (Ubuntu 26.04+)" in out
+    assert calls.read_text().split() == ["-R", f"{aa.as_posix()}/wg-quick"]
+    assert (aa / "disable" / "wg-quick").exists()  # і після перезавантаження профіль не повернеться
+    assert "FLU1:" in out
+
+    # профіль уже вивантажено — повторна команда нічого не чіпає й не пише
+    (server.dir / "apparmor-profiles").write_text("nvidia_modprobe (enforce)\n")
+    assert "AppArmor" not in server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    assert len(calls.read_text().splitlines()) == 1
+
+
 def test_damaged_response():
     with pytest.raises(HubError, match="не знайшов"):
         parse_response("щось інше")
