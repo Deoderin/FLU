@@ -5,6 +5,7 @@
                Скрипт сам ставить WireGuard, якщо його немає, і додає пілота й НРК.
 3. apply_response() — рядок FLU1:...:END із сервера -> інвентар (адреса й ключ сервера,
                номер пілота, слот НРК) і конфіги: тунель пілота й конфіг роутера.
+               Правий сервер: запис цього ноутбука з тим самим номером чи слотом застарів і звільняється.
 """
 from __future__ import annotations
 
@@ -100,6 +101,38 @@ def _set_pilot(root: Path, site: str, name: str, pilot_id: int) -> None:
         sites.fa.set_flow_style()
         doc["operators"].append(CommentedMap([("name", name), ("id", pilot_id), ("role", "dispatcher"), ("sites", sites)]))
     _edit(root / "inventory" / "operators.yaml", change)
+
+
+def _release(root: Path, site: str, pilot: str, pilot_id: int, robot_id: int | None, slot: int | None) -> list[str]:
+    """Сервер видає лише номер пілота й слот НРК, яких у його базі ні в кого немає. Якщо в інвентарі цього
+    ноутбука вони записані за іншим пілотом чи НРК, той запис застарів: на сервері їх уже немає (сервер
+    новий чи перевстановлений або їх із нього видалили). Звільняємо: пілот лишається без майданчика,
+    НРК — без слота. Повертає, що звільнено, — людині."""
+    notes: list[str] = []
+
+    def free_pilot(doc):
+        for item in doc.get("operators") or []:
+            if item["name"] != pilot and int(item["id"]) == pilot_id and site in (item.get("sites") or []):
+                item["sites"].remove(site)
+                notes.append(T(f"пілот {item['name']}: його номер {pilot_id} сервер видав пілоту {pilot} — на цьому сервері "
+                               f"{item['name']} немає. Повернути: виберіть його в кроці 1 і виконайте команду на сервері ще раз",
+                               f"pilot {item['name']}: the server gave its number {pilot_id} to pilot {pilot} - {item['name']} "
+                               f"is not on this server. To bring it back: choose it in step 1 and run the command on the server again"))
+
+    def free_robot(doc):
+        for item in doc.get("robots") or []:
+            if int(item["id"]) != robot_id and item.get("site") == site and item.get("slot") is not None and int(item["slot"]) == slot:
+                del item["slot"]
+                name = f"nrk-{int(item['id']):03d}"
+                notes.append(T(f"НРК {name}: його слот {slot} сервер видав іншому НРК — на цьому сервері {name} немає. "
+                               f"Повернути: додайте його знову (крок 1) і перепрошийте роутер",
+                               f"UGV {name}: the server gave its slot {slot} to another UGV - {name} is not on this server. "
+                               f"To bring it back: add it again (step 1) and reflash the router"))
+
+    _edit(root / "inventory" / "operators.yaml", free_pilot)
+    if robot_id is not None:
+        _edit(root / "inventory" / "robots.yaml", free_robot)
+    return notes
 
 
 # --- команда для сервера ---------------------------------------------------------
@@ -237,16 +270,23 @@ def apply_response(root: Path, text: str) -> dict:
             raise HubError(T(f"НРК {data['robot']['serial']} у відповіді не збігається з підготовленим на цьому ноутбуці",
                              f"UGV {data['robot']['serial']} in the response does not match the one prepared on this laptop"))
 
-    _set_site(root, site.name, data)
-    _set_pilot(root, site.name, pilot, int(data["pilot"]["id"]))
-    inv = Inventory.load(root)
-    if robot is not None:
-        inv.assign(robot.id, site.name, int(data["robot"]["slot"]))
-        inv.save_robots()
-        inv = Inventory.load(root)
+    # Не пройшла перевірка — інвентар лишається, яким був: інакше в ньому застрягла б половина відповіді
+    files = [root / "inventory" / f"{name}.yaml" for name in ("sites", "operators", "robots")]
+    before = {path: path.read_bytes() for path in files}
     try:
+        _set_site(root, site.name, data)
+        notes = _release(root, site.name, pilot, int(data["pilot"]["id"]),
+                         robot.id if robot else None, int(data["robot"]["slot"]) if robot else None)
+        _set_pilot(root, site.name, pilot, int(data["pilot"]["id"]))
+        inv = Inventory.load(root)
+        if robot is not None:
+            inv.assign(robot.id, site.name, int(data["robot"]["slot"]))
+            inv.save_robots()
+            inv = Inventory.load(root)
         inv.check()
     except InventoryError as exc:
+        for path, content in before.items():
+            path.write_bytes(content)
         raise HubError(str(exc)) from None
 
     renderer = Renderer(inv, store)
@@ -261,4 +301,6 @@ def apply_response(root: Path, text: str) -> dict:
         robot = inv.robot(robot.id)
         renderer.render_robot(robot)
         summary.update({"robot": robot.name, "robot_id": robot.id, "slot": robot.slot, "qgc": renderer.qgc_address(robot)})
+    if notes:
+        summary["released"] = notes
     return summary

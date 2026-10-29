@@ -158,6 +158,44 @@ def test_response_for_another_laptop_rejected(fresh, tmp_path):
 
 
 @needs_bash
+def test_new_server_frees_stale_numbers(fresh, tmp_path):
+    """Перший сервер не запрацював, пілот створив новий і завів іншого пілота й НРК. Новий сервер порожній
+    і видає ті самі номер 10 і слот 1, що в інвентарі ще за старими: правий сервер, старі записи звільняються."""
+    old = FakeServer(tmp_path / "old")
+    apply_response(fresh, old.run(prepare(fresh, "pilot01", "FLU-2026-0001")["command"]))
+
+    new = FakeServer(tmp_path / "new")
+    summary = apply_response(fresh, new.run(prepare(fresh, "pixel", "FLU-2026-0002")["command"]))
+    assert (summary["pilot_ip"], summary["robot"], summary["slot"]) == ("10.150.1.10", "nrk-002", 1)
+    assert len(summary["released"]) == 2
+    assert "pilot01" in summary["released"][0] and "nrk-001" in summary["released"][1]
+
+    inv = Inventory.load(fresh)
+    assert inv.validate() == []
+    assert inv.site("main").server_pubkey == new.pubkey
+    assert [o.name for o in inv.operators_on("main")] == ["pixel"]
+    assert inv.operators["pilot01"].sites == []
+    assert (inv.robot(1).site, inv.robot(1).slot, inv.robot(2).slot) == ("main", None, 1)
+
+    # старого пілота й НРК можна повернути на новий сервер: вони отримають наступні вільні номери
+    apply_response(fresh, new.run(prepare(fresh, "pilot01", "FLU-2026-0001")["command"]))
+    inv = Inventory.load(fresh)
+    assert (inv.operators["pilot01"].id, inv.robot(1).slot, inv.validate()) == (11, 2, [])
+
+
+@needs_bash
+def test_failed_check_leaves_inventory_untouched(fresh, tmp_path):
+    server = FakeServer(tmp_path)
+    out = server.run(prepare(fresh, "ivan", "FLU-2026-0001")["command"])
+    ops = fresh / "inventory" / "operators.yaml"
+    ops.write_text(ops.read_text("utf-8") + "  - {name: ghost, id: 20, role: operator, sites: [nowhere]}\n", "utf-8")
+    files = {p: p.read_bytes() for p in (fresh / "inventory").glob("*.yaml")}
+    with pytest.raises(HubError, match="немає майданчика nowhere"):
+        apply_response(fresh, out)
+    assert {p: p.read_bytes() for p in (fresh / "inventory").glob("*.yaml")} == files
+
+
+@needs_bash
 def test_apparmor_profile_of_wg_quick_is_turned_off(fresh, tmp_path):
     """Ubuntu 26.04: профіль AppArmor для wg-quick забороняє PostUp (sysctl, sh) — тунель падав одразу після підняття."""
     server = FakeServer(tmp_path)

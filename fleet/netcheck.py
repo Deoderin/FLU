@@ -11,6 +11,7 @@ import os
 import subprocess
 
 from . import NO_WINDOW
+from .addressing import in_starlink_net
 from .i18n import T
 
 ROUTER_NET = ipaddress.ip_network("192.168.88.0/24")
@@ -91,6 +92,15 @@ def check_router_link(adapters: list[dict] | None = None) -> dict:
             f"network settings of \"{a['name']}\" turn on \"Obtain an IP address automatically\" or add address 192.168.88.250")}
     # Адресу видав хтось інший: роутер зі старим конфігом працює як світч і пропускає DHCP домашньої мережі
     leased = [ip for a in up if a["dhcp"] for ip in a["ips"] if not ip.startswith("169.254.")]
+    if leased and in_starlink_net(leased[0]):
+        # Starlink за мостом роутера НРК (у порту 2–5 чи через свитч у них) — DHCP Starlink доходить до ноутбука
+        return {"status": "foreign", "ip": leased[0], "message": T(
+            f"кабель під'єднано, але ноутбук отримав адресу {leased[0]} — найімовірніше від Starlink (він роздає 192.168.1.x), а не від "
+            f"роутера НРК: Starlink підключено не в порт 1 роутера, а в порти 2–5 (чи у свитч на них), або кабель ноутбука "
+            f"йде в Starlink. Starlink — лише в порт 1, ноутбук — у порт 5",
+            f"the cable is connected, but the laptop got address {leased[0]} - most likely from Starlink (it gives 192.168.1.x), not from "
+            f"the UGV router: Starlink is plugged not into router port 1 but into ports 2-5 (or a switch on them), or the "
+            f"laptop cable goes to Starlink. Starlink goes only into port 1, the laptop into port 5")}
     if leased:
         return {"status": "foreign", "ip": leased[0], "message": T(
             f"кабель під'єднано, але ноутбук отримав адресу {leased[0]} не від скинутого роутера (той роздає 192.168.88.x): "

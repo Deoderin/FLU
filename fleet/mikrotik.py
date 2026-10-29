@@ -38,6 +38,11 @@ class MikroTikAuthError(MikroTikError):
     """Роутер відповів, але пароль не підійшов — це не «роутер не відповідає»."""
 
 
+class StarlinkOnLan(MikroTikError):
+    """Starlink не в порту 1, а в порту мосту НРК (2–5): прошивати не можна — роутер лишився б без інтернету,
+    а пошук пристроїв бачить там телефони з Wi-Fi Starlink і приймає їх за камери."""
+
+
 def parse_ros_duration(text: str) -> int | None:
     """Тривалість RouterOS ('00:01:05', '1d02:03:04', '1m5s', '35s') у секундах."""
     text = text.strip()
@@ -285,14 +290,27 @@ def find_bench_router(log=print, timeout: float = 3.0, name: str | None = None) 
     return BENCH_HOST
 
 
-def wait_for_file(mt: MikroTik, name: str, timeout: float = 20) -> None:
-    """Файл, залитий по SFTP, з'являється в /file не одразу, а run-after-reset приймає лише файли з цього списку."""
+def wait_for_file(mt: MikroTik, name: str, timeout: float = 20, size: int | None = None) -> None:
+    """Файл, залитий по SFTP, з'являється в /file не одразу, а run-after-reset приймає лише файли з цього списку.
+
+    size — скільки байтів має бути: скидання з недописаним конфігом лишає роутер напівпорожнім, і після нього
+    «не повернувся за 300 с» без жодної підказки (поле 25.10). Чекаємо, лише поки файл менший; розмір, який
+    RouterOS показує не числом, не звіряємо — краще прошити, ніж зупинити прошивку через формат.
+    """
     deadline = time.monotonic() + timeout
+    got = ""
     while time.monotonic() < deadline:
         if mt.get(f'/file find name="{name}"'):
-            return
+            got = mt.get(f'/file get [find name="{name}"] size') if size is not None else ""
+            if size is None or not got.isdigit() or int(got) >= size:
+                return
         time.sleep(1)
     files = mt.run("/file print terse", check=False).strip()
+    if got:
+        raise MikroTikError(T(f"{mt.host}: залитий файл {name} має {got} байт замість {size} — не скидаю роутер з "
+                              f"недописаним конфігом. Запустіть прошивку ще раз. Файли на роутері:\n{files}",
+                              f"{mt.host}: the uploaded file {name} has {got} bytes instead of {size} - not resetting the "
+                              f"router with a partial config. Flash again. Files on the router:\n{files}"))
     raise MikroTikError(T(f"{mt.host}: залитий файл {name} не з'явився в /file за {int(timeout)} с. Файли на роутері:\n{files}",
                           f"{mt.host}: the uploaded file {name} did not appear in /file within {int(timeout)} s. Files on the router:\n{files}"))
 
@@ -356,13 +374,13 @@ def pick_devices(ports: dict[str, str], hosts: dict[str, list[str]], ip_macs: di
     """
     def usable(ip: str) -> bool:
         addr = ipaddress.ip_address(ip)
-        return ip not in own and not any(addr in ipaddress.ip_network(n) for n in NO_DEVICE_NETS)
+        return (ip not in own and not A.in_starlink_net(ip)
+                and not any(addr in ipaddress.ip_network(n) for n in NO_DEVICE_NETS))
 
     found: dict[str, dict[str, str]] = {}
     for host in A.DEVICES:
         port, label = ports.get(host), T(*DEVICE_LABELS[host])
         macs = hosts.get(port, [])
-        pairs = [(mac, ip) for mac in macs for ip in ip_macs.get(mac, []) if usable(ip)]
         if not macs and (links or {}).get(host) is False:
             log(T(f"  {label} ({port}): у порту немає лінку — кабель не вставлено або пристрій без живлення",
                   f"  {label} ({port}): no link on the port - the cable is out or the device has no power"))
@@ -371,9 +389,27 @@ def pick_devices(ports: dict[str, str], hosts: dict[str, list[str]], ip_macs: di
             log(T(f"  {label} ({port}): у порту нічого не видно — лишаю адресу, що була",
                   f"  {label} ({port}): nothing on the port - keeping the previous address"))
             continue
+        real = [mac for mac in macs if not A.random_mac(mac)]
+        if not real:
+            log(T(f"  {label} ({port}): видно лише {', '.join(macs)} — випадкові MAC телефонів чи ноутбуків, не камера "
+                  f"й не ФК (так буває, коли в порт потрапила мережа Starlink) — не беру",
+                  f"  {label} ({port}): only {', '.join(macs)} - random MACs of phones or laptops, not a camera or "
+                  f"the FC (it happens when the Starlink network got into the port) - not using them"))
+            continue
+        pairs = [(mac, ip) for mac in real for ip in ip_macs.get(mac, []) if usable(ip)]
+        starlink = [(mac, ip) for mac in real for ip in ip_macs.get(mac, []) if ip not in own and A.in_starlink_net(ip)]
+        if not pairs and starlink:
+            mac, ip = starlink[0]
+            log(T(f"  {label} ({port}): {ip} ({mac}) — це мережа Starlink (192.168.1.x): роутер, підключений до неї ще й "
+                  f"на мосту, губить шлюз Starlink, і НРК без зв'язку. Змініть пристрою адресу (камері — Dahua ConfigTool, "
+                  f"наприклад на 192.168.15.109) і шукайте ще раз",
+                  f"  {label} ({port}): {ip} ({mac}) - this is the Starlink network (192.168.1.x): a router joined to it on "
+                  f"the bridge too loses the Starlink gateway, and the UGV is offline. Change the device address (a camera - "
+                  f"Dahua ConfigTool, e.g. to 192.168.15.109) and search again"))
+            continue
         if not pairs:
-            log(T(f"  {label} ({port}): пристрій {macs[0]} є, але його адресу не знайдено — лишаю адресу, що була",
-                  f"  {label} ({port}): device {macs[0]} is there but its address was not found - keeping the previous one"))
+            log(T(f"  {label} ({port}): пристрій {real[0]} є, але його адресу не знайдено — лишаю адресу, що була",
+                  f"  {label} ({port}): device {real[0]} is there but its address was not found - keeping the previous one"))
             continue
         # Кілька адрес — беремо стандартну, якщо вона серед них, інакше першу
         mac, ip = next((p for p in pairs if p[1] == str(A.lan_ip(host))), pairs[0])
@@ -391,6 +427,28 @@ def pick_devices(ports: dict[str, str], hosts: dict[str, list[str]], ip_macs: di
             for h in same:
                 del found[h]
     return found
+
+
+def starlink_on_lan(hosts: dict[str, list[str]], ip_macs: dict[str, list[str]], own: set[str]) -> tuple[str, str] | None:
+    """(порт мосту, MAC), за яким відповідає шлюз Starlink 192.168.1.1: Starlink воткнули не в порт 1.
+    ARP роутера знає й Starlink на ether1, але ether1 не в мості — серед hosts його немає."""
+    gw = str(A.STARLINK_GW)
+    if gw in own:  # тимчасова адреса самого роутера на час опиту
+        return None
+    return next(((port, mac) for port, macs in hosts.items() for mac in macs if gw in ip_macs.get(mac, [])), None)
+
+
+def starlink_on_lan_error(port: str, mac: str) -> StarlinkOnLan:
+    n = port.removeprefix("ether")
+    return StarlinkOnLan(T(
+        f"у порту {n} ({port}) роутера — мережа Starlink: там відповідає роутер Starlink {A.STARLINK_GW} ({mac}). "
+        f"Starlink — лише в порт 1. З ним у портах 2–5 (камери, ФК, ноутбук) НРК лишається без інтернету й тунелю, "
+        f"а пошук приймає за камеру телефони з Wi-Fi Starlink. Переставте кабель Starlink у порт 1 і запустіть "
+        f"прошивку ще раз. Роутер не прошито",
+        f"port {n} ({port}) of the router has the Starlink network: the Starlink router {A.STARLINK_GW} ({mac}) answers "
+        f"there. Starlink goes only into port 1. With it in ports 2-5 (cameras, FC, laptop) the UGV has no internet and "
+        f"no tunnel, and the device search takes phones on the Starlink Wi-Fi for cameras. Move the Starlink cable to "
+        f"port 1 and flash again. The router is not flashed"))
 
 
 def router_addresses(text: str) -> list[tuple[ipaddress.IPv4Interface, str]]:
@@ -453,7 +511,11 @@ def detect_devices(mt: MikroTik, ports: dict[str, str], log=print, scan_seconds:
         hosts_text += mt.run("/interface bridge host print terse where !local", check=False)  # після опиту: хто озвався
         ip_macs = parse_ip_macs(heard + "\n" + mt.run("/ip arp print terse", check=False))
         own = set(ADDRESS_RE.findall(mt.run("/ip address print terse", check=False)))
-        return parse_bridge_hosts(hosts_text), ip_macs, own
+        hosts = parse_bridge_hosts(hosts_text)
+        wrong = starlink_on_lan(hosts, ip_macs, own)
+        if wrong:  # далі шукати марно: що б не знайшлося, НРК з таким підключенням без зв'язку
+            raise starlink_on_lan_error(*wrong)
+        return hosts, ip_macs, own
 
     while True:
         heard += mt.run(f"/tool ip-scan interface={bridge} duration={scan_seconds}s", check=False, timeout=scan_seconds + 30)
@@ -494,7 +556,7 @@ def apply_full_config(mt: MikroTik, rsc: Path) -> None:
     """Скидання роутера з нашим конфігом замість заводського. Роутер іде в перезавантаження."""
     remote = ("flash/" if mt.has_flash() else "") + "fleet-robot.rsc"
     mt.upload(rsc, remote)
-    wait_for_file(mt, remote)
+    wait_for_file(mt, remote, size=rsc.stat().st_size)
     # RouterOS 7.20: файл уже є в /file, а run-after-reset ще кілька секунд його не приймає
     # («input does not match any value of run-after-reset») — чекаємо й пробуємо знову
     for attempt in range(RESET_ATTEMPTS):
@@ -529,6 +591,53 @@ def wait_for(hosts: str | list[str], password: str, timeout: float = 300) -> Mik
     listed = ", ".join(hosts)
     raise MikroTikError(T(f"MikroTik {listed} не повернувся за {int(timeout)} с: {last}",
                           f"MikroTik {listed} did not come back within {int(timeout)} s: {last}"))
+
+
+UPLINK_WAIT = 90  # скільки після прошивки чекати рукопожаття з сервером, коли Starlink у порту 1
+INTERNET_PROBE = "1.1.1.1"  # на ping відповідає завжди; сервер майданчика ICMP може й не пропускати
+
+
+def check_uplink(mt: MikroTik, wan: str, tag: str, server: str, wait: float = UPLINK_WAIT,
+                 log=print) -> tuple[str, str]:
+    """Чи вийшов щойно прошитий НРК на сервер — щоб «прошито ✓» не означало «на зв'язку» наосліп (поле 29.10).
+
+    (стан, повідомлення). online — рукопожаття є; no_wan — від Starlink у порту 1 адреси немає (на стенді звична
+    справа: зв'язок перевіряють у кроці 6); no_internet — адреса є, а інтернету немає; no_handshake — інтернет є,
+    а сервер тунель не приймає (НРК на ньому немає чи ключ інший).
+    """
+    if mt.get(f"/ip dhcp-client get [find interface={wan}] status") != "bound":
+        return "no_wan", T(
+            f"зв'язок із сервером не перевірено: від Starlink у порту 1 адреси немає (не під'єднано?). Під'єднайте "
+            f"Starlink у порт 1 і перевірте зв'язок у кроці 6",
+            f"the link to the server is not checked: no address from Starlink in port 1 (not connected?). Connect "
+            f"Starlink to port 1 and check the link in step 6")
+    address = mt.get(f"/ip dhcp-client get [find interface={wan}] address")
+    log(T(f"  Starlink у порту 1 дав адресу {address} — чекаю рукопожаття з сервером {server} (до {int(wait)} с)...",
+            f"  Starlink in port 1 gave address {address} - waiting for a handshake with the server {server} "
+            f"(up to {int(wait)} s)..."))
+    deadline = time.monotonic() + wait
+    while True:
+        age = mt.last_handshake(tag)
+        if age is not None:
+            return "online", T(f"зв'язок із сервером є: рукопожаття {age} с тому ✓",
+                               f"the server link is up: handshake {age} s ago ✓")
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(5)
+    received = re.findall(r"\breceived=(\d+)", mt.run(f"/ping {INTERNET_PROBE} count=3", check=False, timeout=30))
+    if not (received and int(received[-1]) > 0):
+        return "no_internet", T(
+            f"УВАГА: НРК НЕ НА ЗВ'ЯЗКУ. Starlink у порту 1 дав адресу {address}, але інтернету немає ({INTERNET_PROBE} "
+            f"не відповідає). Перевірте Starlink (у застосунку Starlink — «Підключено»), тоді крок 6",
+            f"WARNING: THE UGV IS OFFLINE. Starlink in port 1 gave address {address}, but there is no internet "
+            f"({INTERNET_PROBE} does not answer). Check Starlink (\"Connected\" in the Starlink app), then step 6")
+    return "no_handshake", T(
+        f"УВАГА: НРК НЕ НА ЗВ'ЯЗКУ. Інтернет є, а сервер {server} за {int(wait)} с рукопожаття не дав: на сервері немає "
+        f"цього НРК або в нього інший ключ. Виконайте на сервері команду з кроку 2 ще раз; на сервері sudo wg show — "
+        f"у піра цього НРК має з'явитися latest handshake",
+        f"WARNING: THE UGV IS OFFLINE. There is internet, but the server {server} gave no handshake in {int(wait)} s: "
+        f"the server does not have this UGV or has another key. Run the step 2 command on the server again; on the "
+        f"server sudo wg show - the peer of this UGV must get a latest handshake")
 
 
 def save_baseline(robot_dir: Path, mt: MikroTik) -> Path:

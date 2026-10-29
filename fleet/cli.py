@@ -108,6 +108,11 @@ def cmd_provision(args) -> int:
 
 
 EXIT_DEVICES_MISSING = 3  # роутер не прошито: не всі камери й ФК знайшлися (майстер питає, що робити)
+EXIT_FLASHED_OFFLINE = 4  # роутер прошито, а Starlink у порту 1 є — і НРК до сервера не дійшов (майстер попереджає)
+STALE_REASONS = {"random_mac": ("випадкова MAC телефона чи ноутбука, не камера й не ФК",
+                                "a random MAC of a phone or laptop, not a camera or the FC"),
+                 "starlink_net": ("мережа Starlink, з нею НРК лишався без інтернету",
+                                  "the Starlink network, with it the UGV had no internet")}
 
 
 def save_device_scan(path: Path, robot, ports: dict, found: dict, stopped: bool, via: str) -> None:
@@ -122,8 +127,9 @@ def save_device_scan(path: Path, robot, ports: dict, found: dict, stopped: bool,
 
 
 def cmd_bench_mikrotik(args) -> int:
-    from .mikrotik import (BENCH_HOST, DEVICE_LABELS, MikroTikAuthError, MikroTikError, apply_full_config,
-                           detect_devices, find_bench_router, open_router, save_baseline, wait_for)
+    from .mikrotik import (BENCH_HOST, DEVICE_LABELS, MikroTikAuthError, MikroTikError, StarlinkOnLan,
+                           apply_full_config, check_uplink, detect_devices, find_bench_router, open_router,
+                           save_baseline, wait_for)
 
     inv, store = load()
     robot = inv.robot(args.id)
@@ -173,14 +179,41 @@ def cmd_bench_mikrotik(args) -> int:
         # Камери й ФК лишаються на своїх адресах (хоч 192.168.15.x): роутер одразу прошивається під них
         platform = inv.platform(robot)
         ports = platform["ports"]
+        # Записи минулих прошивок, яким не можна вірити: телефон із Wi-Fi Starlink, що потрапив у порт камери
+        # (випадкова MAC), чи адреса в мережі Starlink. З ними роутер лишався без інтернету — забуваємо одразу,
+        # щоб і зупинена прошивка не показала їх у кроці 5 як «адресу з минулої прошивки»
+        stale = {h: A.untrusted_device(d) for h, d in robot.devices.items() if A.untrusted_device(d)}
+        for h, why in stale.items():  # не host: це адреса роутера, за нею далі заливаємо й чекаємо
+            dev, label, reason = robot.devices[h], T(*DEVICE_LABELS[h]), T(*STALE_REASONS[why])
+            print(T(f"  {label}: {dev.get('ip')} ({dev.get('mac')}) з минулої прошивки — {reason}: забуваю",
+                    f"  {label}: {dev.get('ip')} ({dev.get('mac')}) from the previous flashing - {reason}: dropping it"))
+        if stale:
+            inv.set_devices(robot.id, {h: d for h, d in robot.devices.items() if h not in stale})
+            inv.save_robots()
         # Де ще шукати мовчазні пристрої: адреси з минулої прошивки й заводська адреса камер
         factory = platform.get("cameras", {}).get("factory_ip")
         hints = [d["ip"] for d in robot.devices.values() if d.get("ip")] + ([factory] if factory else [])
         try:
             found = detect_devices(mt, ports, hints=hints)
+        except StarlinkOnLan:
+            raise  # тут нема чого вирішувати: «Прошити без них» лишило б НРК без зв'язку так само
         except Exception as exc:  # пошук зламався — вирішує людина: шукати ще раз чи прошити з адресами, що були
             found = {}
             print(T(f"  пристрої не знайшов ({exc})", f"  could not look for the devices ({exc})"))
+        # Пристрій переїхав в інший порт (поле 26.10: адаптер ФК стояв у порту камери). Старий запис іншої ролі з тією ж
+        # MAC чи адресою — уже не той пристрій: з ним у конфігу дві однакові оренди DHCP, і RouterOS обриває скрипт
+        # на півдорозі — ні Starlink, ні тунелю
+        moved = {h: other for h, d in robot.devices.items() if h not in found for other, f in found.items()
+                 if d.get("ip") == f["ip"] or (d.get("mac") and d.get("mac") == f.get("mac"))}
+        for h, other in moved.items():
+            dev = robot.devices[h]
+            print(T(f"  {T(*DEVICE_LABELS[h])}: {dev.get('ip')} ({dev.get('mac')}) з минулої прошивки — тепер це "
+                    f"{T(*DEVICE_LABELS[other])} у порту {ports.get(other)}: забуваю",
+                    f"  {T(*DEVICE_LABELS[h])}: {dev.get('ip')} ({dev.get('mac')}) from the previous flashing - now it is "
+                    f"the {T(*DEVICE_LABELS[other])} on port {ports.get(other)}: dropping it"))
+        if moved:
+            inv.set_devices(robot.id, {h: d for h, d in robot.devices.items() if h not in moved})
+            inv.save_robots()
         # Не знайдено й немає адреси з минулої прошивки: роутер вів би тунель у нікуди, а приймальний тест цього не бачив
         missing = [h for h in A.DEVICES if h not in found and h not in robot.devices]
         via = "tunnel" if args.tunnel else "bench"
@@ -197,7 +230,7 @@ def cmd_bench_mikrotik(args) -> int:
         save_device_scan(scan_path, robot, ports, found, stopped=False, via=via)
         before = dict(robot.devices)
         inv.set_devices(robot.id, {**robot.devices, **found})
-        if robot.devices != before:
+        if robot.devices != before or stale or moved:
             inv.save_robots()
             r.render_robot(robot)
         rsc = r.robot_dir(robot) / "robot.rsc"
@@ -211,16 +244,35 @@ def cmd_bench_mikrotik(args) -> int:
     # тоді після скидання ноутбук уже в br-lan і бачить роутер на 192.168.88.1
     # Через тунель роутер повертається на ту саму адресу, щойно підніметься тунель майданчика
     back = [host] if args.tunnel else [BENCH_HOST] if ipaddress.ip_address(host) in A.LAN else [host, BENCH_HOST]
-    with wait_for(back, password) as mt:
+    try:
+        back_mt = wait_for(back, password)
+    except MikroTikError as exc:
+        if args.tunnel:
+            raise
+        # Найчастіше роутер давно піднявся, а ноутбук його не бачить: адресу йому видав Starlink у порту 2–5
+        from . import netcheck
+        link = netcheck.check_router_link()
+        if link["status"] in ("ok", "unknown"):
+            raise
+        raise MikroTikError(f"{exc}\n{link['message']}") from None
+    with back_mt as mt:
         got = mt.fingerprint()
         if got != fp:
             print(T(f"конфіг застосувався не повністю: відбиток {got}, очікувався {fp}. Дивіться /log print на роутері",
                     f"the config was applied partially: fingerprint {got}, expected {fp}. See /log print on the router"))
             return 1
         path = save_baseline(r.robot_dir(robot), mt)
-    print(T(f"готово: відбиток {fp}, еталон для перевірки дрейфу: {rel(path)}",
-            f"done: fingerprint {fp}, drift reference: {rel(path)}"))
-    return 0
+        print(T(f"готово: відбиток {fp}, еталон для перевірки дрейфу: {rel(path)}",
+                f"done: fingerprint {fp}, drift reference: {rel(path)}"))
+        # Прошито — ще не на зв'язку: Starlink уже в порту 1 — дивимося, чи дійшов НРК до сервера. Через тунель
+        # роутер і повернувся тунелем, а LTE перевіряє крок 6
+        wan = inv.platform(robot)["wan"]
+        if args.tunnel or wan.get("type") == "lte":
+            return 0
+        site = inv.site(robot.site)
+        state, message = check_uplink(mt, wan["interface"], f"fleet-site:{site.name}", site.endpoint.host)
+    print(message)
+    return EXIT_FLASHED_OFFLINE if state in ("no_internet", "no_handshake") else 0
 
 
 def cmd_bench_find(args) -> int:
@@ -383,6 +435,8 @@ def cmd_hub_apply(args) -> int:
     if "robot" in summary:
         print(T(f"НРК {summary['robot']}: слот {summary['slot']}, QGroundControl — TCP {summary['qgc']}",
                 f"UGV {summary['robot']}: slot {summary['slot']}, QGroundControl - TCP {summary['qgc']}"))
+    for note in summary.get("released", []):
+        print(f"  - {note}")
     return 0
 
 

@@ -103,8 +103,8 @@ class FakeRouter:
     """RouterOS 7: файл, залитий по SFTP, з'являється в /file не одразу."""
     host = "192.168.88.1"
 
-    def __init__(self, appears_after):
-        self.appears_after, self.checks, self.commands = appears_after, 0, []
+    def __init__(self, appears_after, size="12"):
+        self.appears_after, self.checks, self.commands, self.size = appears_after, 0, [], size
 
     def has_flash(self):
         return False
@@ -113,6 +113,8 @@ class FakeRouter:
         self.commands.append(f"upload {remote}")
 
     def get(self, expression):
+        if "size" in expression:
+            return self.size
         self.checks += 1
         return "*1" if self.checks >= self.appears_after else ""
 
@@ -121,25 +123,32 @@ class FakeRouter:
         return " 0 name=fleet-robot.rsc type=script size=4.1KiB" if command.startswith("/file print") else ""
 
 
-def test_reset_waits_for_uploaded_file(monkeypatch):
+@pytest.fixture
+def rsc(tmp_path):
+    path = tmp_path / "robot.rsc"
+    path.write_bytes(b"x" * 12)  # 12 байт — стільки ж показує FakeRouter
+    return path
+
+
+def test_reset_waits_for_uploaded_file(monkeypatch, rsc):
     monkeypatch.setattr(mikrotik, "time", Clock())
     router = FakeRouter(appears_after=3)
-    mikrotik.apply_full_config(router, None)
+    mikrotik.apply_full_config(router, rsc)
     assert router.checks == 3
     assert router.commands == ["upload fleet-robot.rsc", "/system reset-configuration no-defaults=yes skip-backup=yes "
                                "run-after-reset=fleet-robot.rsc"]
 
 
-def test_reset_not_started_without_file(monkeypatch):
+def test_reset_not_started_without_file(monkeypatch, rsc):
     monkeypatch.setattr(mikrotik, "time", Clock())
     router = FakeRouter(appears_after=10_000)
     with pytest.raises(MikroTikError, match="не з'явився в /file") as exc:
-        mikrotik.apply_full_config(router, None)
+        mikrotik.apply_full_config(router, rsc)
     assert "type=script" in str(exc.value)  # список файлів роутера — для діагностики
     assert not any(c.startswith("/system reset-configuration") for c in router.commands)
 
 
-def test_reset_retried_until_routeros_accepts_file(monkeypatch):
+def test_reset_retried_until_routeros_accepts_file(monkeypatch, rsc):
     """RouterOS 7.20: файл уже в /file, а run-after-reset кілька секунд відповідає «input does not match»."""
     monkeypatch.setattr(mikrotik, "time", Clock())
     router = FakeRouter(appears_after=1)
@@ -152,12 +161,12 @@ def test_reset_retried_until_routeros_accepts_file(monkeypatch):
         return ""
 
     router.run = run
-    mikrotik.apply_full_config(router, None)
+    mikrotik.apply_full_config(router, rsc)
     assert sum(c.startswith("/system reset-configuration") for c in router.commands) == 3  # дві відмови, третя спроба пройшла
 
     refusals = iter([True] * 100)  # файл так і не прийнято: помилка зі списком файлів, а не нескінченні спроби
     with pytest.raises(MikroTikError, match="Файли на роутері"):
-        mikrotik.apply_full_config(router, None)
+        mikrotik.apply_full_config(router, rsc)
 
 
 def test_flashed_ugv_found_over_starlink(monkeypatch):

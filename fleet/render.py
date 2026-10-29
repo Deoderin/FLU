@@ -92,10 +92,15 @@ class Renderer:
     @staticmethod
     def lan_ctx(robot: Robot) -> dict:
         """Мережа НРК: роутер і DHCP — 192.168.88.x, пристрої — на адресах, знайдених під час прошивки."""
+        # Закріплені адреси: пристрій, що бере адресу по DHCP, після перезавантаження отримає ту саму. Кожна MAC і
+        # адреса — один раз: на другій такій оренді RouterOS обриває скрипт конфігу на півдорозі (поле 26.10)
+        leases, seen = [], set()
+        for h, d in robot.devices.items():
+            if d.get("mac") and not A.untrusted_device(d) and not {d["mac"], d["ip"]} & seen:
+                leases.append({"host": h, **d})
+                seen |= {d["mac"], d["ip"]}
         return {"net": str(A.LAN), "mapped": str(A.LAN_MAPPED), "router": str(A.lan_ip("router")),
-                **{h: str(A.device_ip(robot, h)) for h in A.DEVICES}, "extra": A.device_nets(robot),
-                # Закріплені адреси: пристрій, що бере адресу по DHCP, після перезавантаження отримає ту саму
-                "leases": [{"host": h, **d} for h, d in robot.devices.items() if d.get("mac")]}
+                **{h: str(A.device_ip(robot, h)) for h in A.DEVICES}, "extra": A.device_nets(robot), "leases": leases}
 
     def site_ctx(self, robot: Robot, site: Site, slot: int, pending: bool = False) -> dict:
         tag = f"fleet-site:{site.name}" + (" pending" if pending else "")

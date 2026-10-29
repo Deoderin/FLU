@@ -57,10 +57,37 @@ def dstnat_hosts() -> list[str]:
 
 DEVICES = ("fc", "cam1", "cam2")  # пристрої в портах MikroTik; адреси знаходить прошивка
 
+# Мережа, яку роутер Starlink (сам він — 192.168.1.1) роздає в порт 1. Пристрою в ній роутер НРК не підключає:
+# з адресою цієї мережі ще й на мосту він губить шлюз Starlink — НРК без інтернету, а отже й без тунелю, хоч
+# прошивка й «вдалася». У ній же заводські адреси камер Dahua (192.168.1.108) і адаптера ФК (192.168.1.200)
+STARLINK_NET = ipaddress.ip_network("192.168.1.0/24")
+STARLINK_GW = STARLINK_NET.network_address + 1
+
+
+def in_starlink_net(ip: str | IPv4Address) -> bool:
+    return ipaddress.ip_address(ip) in STARLINK_NET
+
+
+def random_mac(mac: str) -> bool:
+    """Локально призначена MAC (біт 0x02 першого байта): випадкові адреси телефонів і ноутбуків у Wi-Fi.
+    У камер і адаптерів ФК MAC заводська — пристрій із такою MAC у порту не камера й не ФК."""
+    return bool(int(mac[:2], 16) & 0x02)
+
+
+def untrusted_device(dev: dict) -> str | None:
+    """Чому запису про пристрій (з минулої прошивки чи щойно знайденого) не можна вірити; None — можна."""
+    if dev.get("mac") and random_mac(dev["mac"]):
+        return "random_mac"
+    if dev.get("ip") and in_starlink_net(dev["ip"]):
+        return "starlink_net"
+    return None
+
 
 def device_ip(robot: Robot, host: str) -> IPv4Address:
-    """Адреса пристрою на борту: знайдена під час прошивки (robot.devices) або стандартна 192.168.88.x."""
-    found = robot.devices.get(host, {}).get("ip")
+    """Адреса пристрою на борту: знайдена під час прошивки (robot.devices) або стандартна 192.168.88.x.
+    Записові, якому не можна вірити (untrusted_device), — стандартна: так його не підхопить жоден конфіг."""
+    dev = robot.devices.get(host, {})
+    found = dev.get("ip") if not untrusted_device(dev) else None
     return ipaddress.ip_address(found) if found else lan_ip(host)
 
 
@@ -73,7 +100,8 @@ def device_nets(robot: Robot) -> list[dict]:
     """Мережі пристроїв поза 192.168.88.0/24 (камери замовника на 192.168.15.x тощо).
 
     Роутер бере в кожній таку адресу .1 (зазвичай це шлюз старої бортової мережі), а якщо її зайняв
-    пристрій — .254. Так пристрої не треба переналаштовувати.
+    пристрій — .254. Так пристрої не треба переналаштовувати. Мережі Starlink (STARLINK_NET) тут не буває навіть
+    зі старого запису: device_ip таких не бере — краще пристрій поза тунелем, ніж НРК без інтернету.
     """
     ips = [device_ip(robot, h) for h in DEVICES]
     nets: list[dict] = []

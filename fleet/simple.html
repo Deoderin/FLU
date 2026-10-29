@@ -150,6 +150,7 @@ const I18N = {
     s4_no_wg: "WireGuard не встановлено — запустіть setup.cmd ще раз.", s4_again: "Створити ще раз",
     s5: "Роутер", s5_hint: "Роутер скинуто до заводських налаштувань. Під'єднайте ноутбук кабелем у порт 5 роутера (1 — для Starlink, 2 і 3 — для камер, 4 — для ФК), зачекайте 30 секунд і натисніть «Перевірити підключення».",
     s5_pwd: "Пароль роутера: новий — з наліпки на дні (рядок Password, не Wi-Fi); якщо там пароля немає — лишіть порожнім", s5_btn: "Прошити роутер", s5_done: "Роутер прошито ✓",
+    s5_offline: "Роутер прошито, але НРК не на зв'язку з сервером: причина — у «Ході виконання» нижче.",
     s5_check: "Перевірити підключення", s5_checking: "Перевіряю кабель і шукаю роутер… (кілька секунд)", s5_found: "Знайдено роутер: {text}",
     s5_noip: "У роутера немає IP-адреси — скиньте його кнопкою Reset до заводських налаштувань.",
     s5_many: "Знайдено кілька роутерів MikroTik: вимкніть Wi-Fi на ноутбуці й лишіть під'єднаним лише роутер НРК.",
@@ -239,6 +240,7 @@ const I18N = {
     s4_no_wg: "WireGuard is not installed - run setup.cmd again.", s4_again: "Create again",
     s5: "Router", s5_hint: "The router is reset to factory settings. Connect the laptop with a cable to router port 5 (1 is for Starlink, 2 and 3 for the cameras, 4 for the FC), wait 30 seconds and press \"Check connection\".",
     s5_pwd: "Router password: a new one - from the label on the bottom (the Password line, not Wi-Fi); leave empty if there is none", s5_btn: "Flash router", s5_done: "Router flashed ✓",
+    s5_offline: "The router is flashed, but the UGV is not connected to the server: the reason is in \"Progress\" below.",
     s5_check: "Check connection", s5_checking: "Checking the cable and looking for the router… (a few seconds)", s5_found: "Router found: {text}",
     s5_noip: "The router has no IP address - reset it to factory settings with the Reset button.",
     s5_many: "Several MikroTik routers found: turn off Wi-Fi on the laptop and keep only the UGV router connected.",
@@ -407,6 +409,7 @@ function showJob(job) {
     message[jobStep] = job.running ? [t("running", { s: job.seconds }), "warn"]
       : job.code === 0 ? [t("done"), "ok"]
       : job.code === 3 && jobStep === 5 ? [t("s5_stopped_short"), "warn"]  // не всі пристрої знайшлися: вибір у кроці 5
+      : job.code === 4 && jobStep === 5 ? [t("s5_offline"), "warn"]        // прошито, а до сервера НРК не дійшов
       : [t("failed_log"), "bad"];
     const el = document.getElementById(`msg-${jobStep}`);
     if (el) { el.textContent = message[jobStep][0]; el.className = "status " + message[jobStep][1]; }
@@ -575,7 +578,13 @@ function render() {
     steps.push(card(3, stateOf(false, done1), t("s3"),
       h("p", { class: "hint" }, t("s3_hint")), ta,
       h("div", {}, btn(t("s3_btn"), async () => {
-        try { await api("/api/simple/apply", { text: ta.value }); inputs.response = ""; inputs.edit3 = ""; message[3] = null; await refresh(); }
+        try {
+          const res = await api("/api/simple/apply", { text: ta.value });
+          inputs.response = ""; inputs.edit3 = "";
+          // Застарілі записи, чиї номери сервер віддав цьому пілоту й НРК: людина має знати, що їх звільнено
+          message[3] = res.released ? [res.released.join("\n"), "warn"] : null;
+          await refresh();
+        }
         catch (e) { message[3] = [e.message, "bad"]; render(); }
       }, { primary: true }))));
   }

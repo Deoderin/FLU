@@ -22,7 +22,7 @@ from . import fc
 from .i18n import T
 from .inventory import Inventory, Robot
 from .keystore import SecretStore
-from .mikrotik import MAC_FIELD_RE, connect_robot, drift
+from .mikrotik import MAC_FIELD_RE, MikroTikAuthError, MikroTikError, connect_robot, drift
 from .params import diff
 from .render import Renderer
 
@@ -206,7 +206,35 @@ class Acceptance:
 
     def check_mikrotik(self) -> None:
         robot = self.robot
-        with connect_robot(self.inv, self.store, robot, via=self.via) as mt:
+        try:
+            mt = connect_robot(self.inv, self.store, robot, via=self.via)
+        except MikroTikAuthError:
+            raise
+        except MikroTikError as exc:
+            if not self.site.hub:
+                raise
+            # hub: голий «timed out» нічого не каже — підказуємо, де шукати (і що видно на сервері)
+            from . import netcheck
+
+            lans, link = A.lan_block(self.site, robot.slot), netcheck.check_router_link()
+            hint = T(
+                f"{exc}. НРК не відповідає через тунель — найчастіше він не на зв'язку з сервером: НРК вимкнено; Starlink "
+                f"не в порту 1 роутера чи без інтернету; роутер прошито версією до 0.3.4 з пристроєм у мережі 192.168.1.x "
+                f"(перепрошийте кабелем, крок 5). На сервері: sudo wg show — у піра з {lans} мають бути endpoint і свіжий "
+                f"latest handshake (немає й у пілотів — на сервері закрито UDP {self.site.endpoint.port})",
+                f"{exc}. The UGV does not answer through the tunnel - most often it is not connected to the server: the UGV "
+                f"is off; Starlink is not in router port 1 or has no internet; the router was flashed by a version before "
+                f"0.3.4 with a device in 192.168.1.x (reflash with a cable, step 5). On the server: sudo wg show - the peer "
+                f"with {lans} must have an endpoint and a fresh latest handshake (none for the pilots either - UDP "
+                f"{self.site.endpoint.port} is closed on the server)")
+            if link["status"] == "ok":  # поле 21.10, 24.10: DHCP роутера дав ноутбуку шлюз, і тунель пілота пішов у НРК
+                hint += T(f". Ноутбук зараз під'єднано кабелем до роутера ({link['ip']}): кабель забирає в тунелю пілота "
+                          f"інтернет — вийміть його й перевірте ще раз",
+                          f". The laptop is now cabled to the router ({link['ip']}): the cable takes the internet away "
+                          f"from the pilot tunnel - unplug it and check again")
+            self.add("mikrotik", "FAIL", hint)
+            return
+        with mt:
             got = mt.fingerprint()
             if got == self.fingerprint:
                 self.add("mikrotik_config", "PASS", T(f"відбиток {got}", f"fingerprint {got}"))

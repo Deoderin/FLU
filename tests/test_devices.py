@@ -48,12 +48,32 @@ def test_devices_found_by_port():
 
 
 def test_cameras_on_one_address_are_not_used():
-    """Дві камери на заводській 192.168.1.108: розвести їх роутер не може — кажемо, а адреси не записуємо."""
-    scan = "192.168.1.108  40:7A:A4:EC:FF:B7\n192.168.1.108  40:7A:A4:EC:FD:77\n"
+    """Дві камери на одній адресі: розвести їх роутер не може — кажемо, а адреси не записуємо."""
+    scan = "192.168.15.108  40:7A:A4:EC:FF:B7\n192.168.15.108  40:7A:A4:EC:FD:77\n"
     logged = []
     found = pick_devices(PORTS, parse_bridge_hosts(BRIDGE_HOSTS), parse_ip_macs(scan), own=set(), log=logged.append)
     assert "cam1" not in found and "cam2" not in found
-    assert any("на одній адресі 192.168.1.108" in line for line in logged)
+    assert any("на одній адресі 192.168.15.108" in line for line in logged)
+
+
+def test_phone_in_the_camera_port_is_not_a_camera():
+    """НРК на полі (29.10): Starlink був у порту камер, і «задньою камерою» записався телефон з його Wi-Fi —
+    192.168.1.68 з випадковою MAC. Роутер узяв 192.168.1.1 — адресу самого Starlink — і лишився без інтернету."""
+    hosts = BRIDGE_HOSTS.replace("40:7A:A4:EC:FD:77", "72:21:4F:53:CC:C1")
+    scan = IP_SCAN + "192.168.1.68  72:21:4F:53:CC:C1\n"
+    logged = []
+    found = pick_devices(PORTS, parse_bridge_hosts(hosts), parse_ip_macs(scan), own=set(), log=logged.append)
+    assert "cam2" not in found and found["cam1"] == CUSTOMER["cam1"]
+    assert any("задня камера (ether3): видно лише 72:21:4F:53:CC:C1 — випадкові MAC" in line for line in logged)
+
+
+def test_device_in_the_starlink_network_is_not_used():
+    """Камера на заводській 192.168.1.108 — у мережі Starlink: прошити роутер під неї — лишити НРК без зв'язку."""
+    scan = IP_SCAN.replace("192.168.15.109", "192.168.1.108")
+    logged = []
+    found = pick_devices(PORTS, parse_bridge_hosts(BRIDGE_HOSTS), parse_ip_macs(scan), own=set(), log=logged.append)
+    assert "cam2" not in found and found["fc"] == CUSTOMER["fc"]
+    assert any("192.168.1.108 (40:7A:A4:EC:FD:77) — це мережа Starlink" in line for line in logged)
 
 
 class Router:
@@ -128,6 +148,23 @@ def test_no_link_is_explained_without_waiting():
     assert any("ФК (ether4): у порту немає лінку" in line for line in logged)
 
 
+STARLINK = "74:24:9F:91:DA:C3"
+
+
+def test_starlink_in_a_camera_port_stops_the_search():
+    """Starlink у порту 3 замість порту 1: шлюз 192.168.1.1 відповідає з-за моста — шукати й прошивати марно."""
+    router = Router(heard=IP_SCAN + f"192.168.1.1  {STARLINK}\n",
+                    hosts=BRIDGE_HOSTS + f" 4   D mac-address={STARLINK} on-interface=ether3 bridge=br-lan\n")
+    with pytest.raises(mikrotik.StarlinkOnLan, match=r"у порту 3 \(ether3\) роутера — мережа Starlink"):
+        detect_devices(router, PORTS, log=lambda *_: None)
+
+
+def test_starlink_in_port_1_is_fine():
+    """Starlink, як треба, на ether1: роутер знає 192.168.1.1, але не за мостом — це не помилка."""
+    router = Router(heard=IP_SCAN + f"192.168.1.1  {STARLINK}\n")
+    assert detect_devices(router, PORTS, log=lambda *_: None) == CUSTOMER
+
+
 def test_probe_plan_keeps_off_other_interfaces():
     addresses = router_addresses("  0   address=192.168.88.1/24 network=192.168.88.0 interface=br-lan actual-interface=br-lan\n"
                                  "  1 D address=192.168.1.37/24 network=192.168.1.0 interface=ether1\n"
@@ -176,6 +213,18 @@ def test_router_takes_254_when_1_is_a_device(provisioned):
     robot = provisioned.robot(1)
     robot.devices = {"fc": {"ip": "192.168.15.1"}}
     assert A.device_nets(robot) == [{"net": "192.168.15.0/24", "router": "192.168.15.254", "prefix": 24}]
+
+
+def test_router_never_joins_the_starlink_network(root, provisioned, store):
+    """Старий запис (до 0.3.4): «камера» 192.168.1.68 з MAC телефона. Конфіг роутера його не бере — інакше роутер
+    узяв би 192.168.1.1, адресу самого Starlink, і НРК лишився б без інтернету й тунелю."""
+    provisioned.set_devices(1, {"cam1": CUSTOMER["cam1"], "cam2": {"ip": "192.168.1.68", "mac": "72:21:4F:53:CC:C1"},
+                                "fc": {"ip": "192.168.1.200", "mac": "04:EE:E8:1C:88:7A"}})  # адаптер ФК на заводській
+    robot = provisioned.robot(1)
+    assert A.device_nets(robot) == [{"net": "192.168.15.0/24", "router": "192.168.15.1", "prefix": 24}]
+    assert (A.device_ip(robot, "cam2"), A.device_ip(robot, "fc")) == (A.lan_ip("cam2"), A.lan_ip("fc"))
+    rsc, _ = Renderer(provisioned, store).robot_rsc(robot, provisioned.site(robot.site), robot.slot)
+    assert "192.168.1." not in rsc
 
 
 class Flashed(Exception):
@@ -234,6 +283,57 @@ def test_previous_address_is_enough(root, bench):
     assert {d["host"]: (d["status"], d["ip"]) for d in scan["devices"]}["fc"] == ("kept", "192.168.15.253")
 
 
+def test_flash_forgets_untrusted_records(root, bench, capsys):
+    """Телефон, записаний задньою камерою минулого разу, — не «адреса з минулої прошивки»: забуваємо його
+    (і в robots.yaml), а задньої камери, як і є, бракує."""
+    state, flash = bench
+    inv = Inventory.load(root)
+    inv.set_devices(1, {"fc": CUSTOMER["fc"], "cam2": {"ip": "192.168.1.68", "mac": "72:21:4F:53:CC:C1"}})
+    inv.save_robots()
+    state["found"] = {"cam1": CUSTOMER["cam1"]}
+    assert flash() == cli.EXIT_DEVICES_MISSING
+    assert "задня камера: 192.168.1.68 (72:21:4F:53:CC:C1) з минулої прошивки — випадкова MAC" in capsys.readouterr().out
+    assert "192.168.1.68" not in (root / "inventory" / "robots.yaml").read_text("utf-8")
+    scan = json.loads((root / "build" / "robots" / "nrk-001" / "devices.json").read_text("utf-8"))
+    assert {d["host"]: d["status"] for d in scan["devices"]} == {"fc": "kept", "cam1": "found", "cam2": "missing"}
+
+
+def test_flash_stops_when_starlink_is_in_a_device_port(bench, monkeypatch):
+    """Starlink не в порту 1: «Прошити без них» тут не рятує — роутер не прошиваємо зовсім."""
+    _, flash = bench
+
+    def detect(mt, ports, hints=()):
+        raise mikrotik.starlink_on_lan_error("ether3", STARLINK)
+    monkeypatch.setattr(mikrotik, "detect_devices", detect)
+    for extra in ((), ("--allow-missing",)):
+        with pytest.raises(mikrotik.StarlinkOnLan, match="Роутер не прошито"):
+            flash(*extra)
+
+
+def test_reset_waits_for_the_whole_config(monkeypatch):
+    """Поле 25.10: «не повернувся за 300 с». Не скидаємо роутер, доки залитий конфіг не має повного розміру."""
+    class Mt:
+        host = "192.168.88.1"
+
+        def __init__(self, sizes):
+            self.sizes = iter(sizes)
+
+        def get(self, expr):
+            return next(self.sizes) if "size" in expr else "*1"
+
+        def run(self, command, check=True, timeout=60):
+            return " 0 name=fleet-robot.rsc size=4096\n"
+
+    mikrotik.wait_for_file(Mt(["4096", "9000"]), "fleet-robot.rsc", size=9000)  # дописався — далі
+    mikrotik.wait_for_file(Mt(["9.0KiB"]), "fleet-robot.rsc", size=9000)        # не число — не звіряємо
+    mikrotik.wait_for_file(Mt(["9216"]), "fleet-robot.rsc", size=9000)          # більший — не недописаний
+    clock = iter(range(0, 100, 5))
+    monkeypatch.setattr(mikrotik.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(mikrotik.time, "sleep", lambda s: None)
+    with pytest.raises(MikroTikError, match="має 4096 байт замість 9000 — не скидаю"):
+        mikrotik.wait_for_file(Mt(["4096"] * 10), "fleet-robot.rsc", timeout=20, size=9000)
+
+
 def test_tunnel_reflash_needs_a_hub(bench):
     _, flash = bench
     with pytest.raises(MikroTikError, match="лише НРК, зареєстрований на hub"):
@@ -259,3 +359,33 @@ def test_acceptance_pings_devices_from_the_router(provisioned, store):
     status = {c.key: (c.status, c.detail) for c in acc.checks}
     assert status["dev_fc"][0] == "PASS" and status["dev_cam1"][0] == "PASS" and "ARP" in status["dev_cam1"][1]
     assert status["dev_cam2"][0] == "FAIL" and "порту 3" in status["dev_cam2"][1]
+
+
+def test_acceptance_explains_a_silent_ugv_on_a_hub(provisioned, store, monkeypatch):
+    """hub: роутер не відповідає через тунель — не голий «timed out», а де шукати й що видно на сервері."""
+    from types import SimpleNamespace
+
+    from fleet import acceptance, netcheck
+
+    def silent(*args, **kwargs):
+        raise MikroTikError("немає SSH до MikroTik 10.150.16.33: timed out")
+    monkeypatch.setattr(acceptance, "connect_robot", silent)
+    link = {"status": "no_cable", "message": ""}
+    monkeypatch.setattr(netcheck, "check_router_link", lambda: link)
+    robot = provisioned.robot(1)
+    acc = Acceptance(provisioned, store, robot)
+    acc.site = SimpleNamespace(hub=True, network=SimpleNamespace(robot_lans=A.LAN.supernet(new_prefix=20)),
+                               endpoint=SimpleNamespace(port=51820))
+    acc.check_mikrotik()
+    [check] = acc.checks
+    assert check.key == "mikrotik" and check.status == "FAIL"
+    assert "timed out. НРК не відповідає через тунель" in check.detail and "sudo wg show" in check.detail
+    assert "закрито UDP 51820" in check.detail and "під'єднано кабелем" not in check.detail
+    # кабель від ноутбука в порту 5: DHCP роутера забрав у тунелю пілота інтернет (поле 21.10, 24.10)
+    link.update(status="ok", ip="192.168.88.201")
+    acc.checks = []
+    acc.check_mikrotik()
+    assert "під'єднано кабелем до роутера (192.168.88.201)" in acc.checks[0].detail
+    acc.site = SimpleNamespace(hub=False)
+    with pytest.raises(MikroTikError):  # не hub — як було: guarded() покаже саму помилку
+        acc.check_mikrotik()
