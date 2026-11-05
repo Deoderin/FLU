@@ -254,3 +254,18 @@ def test_devices_answer_through_router(provisioned, store):
     assert ("/ip firewall nat add chain=srcnat action=masquerade out-interface=br-lan "
             "src-address-list=fleet-sources") in rsc
     assert "dst-address=192.168.88.0/24 protocol=icmp" in rsc  # ping пристроїв через тунель
+
+
+def test_fc_port_at_10_mbit(provisioned, store):
+    """Порт ФК — лише 10 Мбіт/с: CH9121, що піднявся раніше за порт роутера, при 100M/1G лінку не має.
+    Стара RouterOS цих назв швидкостей може не знати — тоді рядок не обриває скрипт."""
+    robot = provisioned.robot(1)
+    rsc, _ = Renderer(provisioned, store).robot_rsc(robot, provisioned.site(robot.site), robot.slot)
+    line = next(line for line in rsc.splitlines() if "advertise=" in line)
+    assert line.startswith(":do { /interface ethernet set ether4 advertise=10M-baseT-half,10M-baseT-full } on-error={")
+    assert rsc.index(line) < rsc.index("name=fleet-version")  # до мітки відбитка, після файрвола
+    assert rsc.index("/ip firewall filter") < rsc.index(line)
+
+    provisioned.platforms["flu-v1"]["ports"]["fc"] = "ether2"
+    rsc, _ = Renderer(provisioned, store).robot_rsc(robot, provisioned.site(robot.site), robot.slot)
+    assert "/interface ethernet set ether2 advertise=10M-baseT-half,10M-baseT-full" in rsc

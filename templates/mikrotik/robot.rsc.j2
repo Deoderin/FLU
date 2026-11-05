@@ -122,6 +122,11 @@ set winbox disabled=no
 /tool mac-server mac-winbox set allowed-interface-list=fleet-lan
 /ip neighbor discovery-settings set discover-interface-list={{ "fleet-lan" if platform.wan.type == "lte" else "fleet-discover" }}
 
+# --- FC port: 10 Mbit/s only. The FC adapters (Waveshare UART TO ETH (B), WCH CH9121) link at 10M anyway, and a CH9121
+# that is up before the router port (router reboot) never links while 100M/1G are advertised (seen on the bench).
+# Older RouterOS may not know these speed names: then the port stays as it was and the script goes on
+:do { /interface ethernet set {{ platform.ports.fc }} advertise=10M-baseT-half,10M-baseT-full } on-error={ :log warning "fleet: fc port speed left as is" }
+
 # WireGuard needs a sane clock after reboot
 /system ntp client set enabled=yes
 /system ntp client servers add address=pool.ntp.org
