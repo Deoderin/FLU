@@ -339,6 +339,8 @@ NO_DEVICE_NETS = ("0.0.0.0/8", "169.254.0.0/16", "127.0.0.0/8")
 PROBE_COMMENT = "fleet-probe"  # тимчасові адреси роутера на час опиту; скидання конфігу їх однаково стирає
 PROBE_SECONDS = 12  # активний опит однієї мережі /24
 DEVICE_WAIT = 90    # скільки чекати пристрої з лінком, що ввімкнулися разом із роутером і ще вантажаться
+FC_ADVERTISE = "10M-baseT-half,10M-baseT-full"  # порт ФК: лише 10 Мбіт/с (так само в конфігу, robot.rsc.j2)
+FC_LINK_WAIT = 10   # скільки чекати лінк ФК після переходу порту на 10 Мбіт/с
 RESET_ATTEMPTS = 6  # скільки разів пробувати скидання, поки RouterOS не прийме щойно залитий файл (~15 с)
 
 
@@ -484,8 +486,31 @@ def probe_plan(bridge: str, addresses: list[tuple[ipaddress.IPv4Interface, str]]
     return plan
 
 
+def fc_port_10m(mt: MikroTik, port: str, log=print, wait: float = FC_LINK_WAIT, sleep=None, clock=None) -> bool:
+    """Порт ФК — на 10 Мбіт/с ще до пошуку пристроїв, як і в конфігу після прошивки. Адаптер WCH CH9121, що
+    піднявся раніше за порт роутера (роутер перезавантажили, а НРК під живленням), при 100M/1G лінку не має —
+    і пошук його б не знайшов. Скидання конфігу це однаково зітре, а конфіг ставить те саме. True — лінк є."""
+    sleep, clock = sleep or time.sleep, clock or time.monotonic  # годинник — на момент виклику (симуляція поля)
+
+    def running() -> bool:
+        return mt.get(f"/interface get [find name={port}] running") == "true"
+
+    before = running()
+    mt.run(f"/interface ethernet set [find name={port}] advertise={FC_ADVERTISE}", check=False)
+    if before:
+        return True
+    deadline = clock() + wait
+    while clock() < deadline:
+        sleep(1)
+        if running():
+            log(T(f"  {port}: порт ФК на 10 Мбіт/с — лінк з'явився", f"  {port}: FC port at 10 Mbit/s - the link is up"))
+            return True
+    return False
+
+
 def detect_devices(mt: MikroTik, ports: dict[str, str], log=print, scan_seconds: int = 10,
-                   hints: list[str] = (), wait_seconds: float = DEVICE_WAIT) -> dict[str, dict[str, str]]:
+                   hints: list[str] = (), wait_seconds: float = DEVICE_WAIT,
+                   fc_link_wait: float = FC_LINK_WAIT) -> dict[str, dict[str, str]]:
     """Хто стоїть у портах камер і ФК і на якій адресі — до прошивки, щоб роутер одразу вів тунель куди треба.
 
     Спершу слухаємо мережу (/tool ip-scan без адрес): так видно пристрої з будь-якої мережі, якщо вони щось шлють.
@@ -500,6 +525,8 @@ def detect_devices(mt: MikroTik, ports: dict[str, str], log=print, scan_seconds:
               f"  port {ports['cam1']} is not in a bridge - not looking for devices, keeping the previous addresses"))
         return {}
     log(T("  шукаю камери й ФК у портах роутера...", "  looking for the cameras and FC on the router ports..."))
+    if ports.get("fc"):  # інакше CH9121, що піднявся раніше за порт роутера, без лінку й не знайдеться
+        fc_port_10m(mt, ports["fc"], log=log, wait=fc_link_wait)
     mt.run(f"/ip address remove [find comment={PROBE_COMMENT}]", check=False)  # лишки обірваного минулого пошуку
     deadline = time.monotonic() + wait_seconds
     heard = hosts_text = ""

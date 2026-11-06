@@ -119,6 +119,8 @@ def test_detect_devices_asks_the_router():
     router = Router()
     assert detect_devices(router, PORTS, log=lambda *_: None) == CUSTOMER
     assert "/tool ip-scan interface=bridge duration=10s" in router.commands
+    # порт ФК на 10 Мбіт/с — ще до пошуку, як і в конфігу: CH9121 при 100M/1G може лишитися без лінку
+    assert router.commands[0] == "/interface ethernet set [find name=ether4] advertise=10M-baseT-half,10M-baseT-full"
     assert not any("address-range" in c or "address add" in c for c in router.commands)  # усіх почули — опит не потрібен
 
 
@@ -143,10 +145,42 @@ def test_no_link_is_explained_without_waiting():
     hosts = "\n".join(line for line in BRIDGE_HOSTS.splitlines() if "ether4" not in line)
     router = Router(hosts=hosts, links={"ether4": False})
     logged = []
-    found = detect_devices(router, PORTS, log=logged.append)  # чекати нема кого: лінку немає
+    found = detect_devices(router, PORTS, log=logged.append, fc_link_wait=0)  # чекати нема кого: лінку немає
     assert "fc" not in found and found["cam1"] == CUSTOMER["cam1"]
     assert any("ФК (ether4): у порту немає лінку" in line for line in logged)
 
+
+
+def test_fc_port_set_to_10_mbit_before_search():
+    """Поле 06.11: CH9121, що піднявся раніше за порт роутера, без лінку, поки порт пропонує 100M/1G — «ФК не знайдено».
+    Порт ФК — на 10 Мбіт/с, і лінк з'являється за кілька секунд."""
+    class Port:
+        def __init__(self, link, after=None):
+            self.link, self.after, self.commands, self.checks = link, after, [], 0
+
+        def run(self, command, check=True, timeout=60):
+            self.commands.append(command)
+            return ""
+
+        def get(self, expr):
+            assert expr == "/interface get [find name=ether4] running"
+            if self.commands and self.after is not None:
+                self.checks += 1
+                self.link = self.link or self.checks >= self.after
+            return "true" if self.link else "false"
+
+    clock = iter(range(1000)).__next__
+    port, logged = Port(link=False, after=3), []
+    assert mikrotik.fc_port_10m(port, "ether4", log=logged.append, sleep=lambda s: None, clock=clock)
+    assert port.commands == ["/interface ethernet set [find name=ether4] advertise=10M-baseT-half,10M-baseT-full"]
+    assert logged == ["  ether4: порт ФК на 10 Мбіт/с — лінк з'явився"]
+    port, logged = Port(link=True), []  # лінк уже є: ставимо 10 Мбіт/с і не чекаємо
+    assert mikrotik.fc_port_10m(port, "ether4", log=logged.append, sleep=lambda s: None, clock=clock)
+    assert len(port.commands) == 1 and logged == []
+    port = Port(link=False)  # ФК немає зовсім: чекаємо не довше FC_LINK_WAIT
+    assert not mikrotik.fc_port_10m(port, "ether4", log=logged.append, sleep=lambda s: None,
+                                    clock=iter(range(0, 1000, 2)).__next__)
+    assert logged == []
 
 STARLINK = "74:24:9F:91:DA:C3"
 
